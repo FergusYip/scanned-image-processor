@@ -56,11 +56,14 @@ uv run scan-crop scans/ cropped/ --min-area 0.02 --padding 0.02
 
 ## How it works
 
-1. Grayscale + blur
-2. Otsu threshold (photo vs white scanner bed), with Canny fallback
-3. Contour detection and filtering (drops specks and full-page borders)
-4. Quadrilateral fit + perspective warp to deskew
-5. Trim white scanner-bed and photo-paper borders
-6. Crop and save
+1. **Locate photos** — color saturation finds printed regions (works for scanner-bed photos and embedded prints on paper). Falls back to scanner-white masking for B&W photos.
+2. **Split stacked photos** — cuts through horizontal white gaps between photos on the same scan.
+3. **Refine bounds** — scans inward from each edge until the scanner-bed white ends, giving precise rectangular bounds even when the photo contains large white areas (ice rinks, skies).
+4. **Deskew** — fits a quadrilateral to the combined color + edge mask and perspective-warps to a rectangle (uses the photo's corner angles).
+5. **Trim** — removes thin scanner-white margins from each edge (capped at ~35 px).
 
-Glossy photos, dark album pages, or overlapping prints may need manual touch-up or tweaked `--min-area` / `--padding` values.
+The old Otsu-threshold approach treated white ice/snow inside photos as scanner background, so contours snapped to internal lines like rink boards. The new approach keys off scanner-bed colour at the *outer* edges instead.
+
+For pencil artwork with an embedded photo (e.g. `scan0010.jpg`), the color print is detected as a separate saturated island and extracted from the page.
+
+Glossy photos or overlapping prints may still need manual touch-up.
