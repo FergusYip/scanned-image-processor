@@ -1,0 +1,10 @@
+{
+  "name": "scanned-image-processor-workspace",
+  "private": true,
+  "scripts": {
+    "build": "pnpm --filter @scanned-image-processor/web build",
+    "test": "pnpm --filter @scanned-image-processor/web test",
+    "typecheck": "pnpm --filter @scanned-image-processor/web typecheck"
+  },
+  "packageManager": "pnpm@9.15.4"
+}
