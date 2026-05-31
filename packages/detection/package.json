@@ -1,0 +1,28 @@
+{
+  "name": "@scanned-image-processor/detection",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "bin": {
+    "scan-detect": "./bin/scan-detect.js"
+  },
+  "exports": {
+    ".": {
+      "types": "./src/index.ts",
+      "import": "./src/index.ts"
+    }
+  },
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "detect": "tsx src/cli.ts"
+  },
+  "dependencies": {
+    "sharp": "^0.33.5"
+  },
+  "devDependencies": {
+    "@types/node": "^22.15.24",
+    "tsx": "^4.19.4",
+    "typescript": "^5.8.3"
+  }
+}
