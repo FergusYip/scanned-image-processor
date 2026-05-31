@@ -13,6 +13,7 @@ import {
   Plus,
   Redo2,
   RefreshCcw,
+  GripVertical,
   Settings,
   Trash2,
   Upload,
@@ -35,6 +36,7 @@ import { renderCropBlob, renderCropCanvas } from "./lib/canvasCrop";
 
 const supportedTypes = new Set(["image/jpeg", "image/png", "image/webp"]);
 const detectionTimeoutMs = 20000;
+const previewMinWidth = 260;
 
 const initialSettings: AppSettings = {
   minCropAreaPercent: 4,
@@ -111,6 +113,7 @@ export function App() {
   const [dragHandle, setDragHandle] = useState<number>();
   const [previewUrl, setPreviewUrl] = useState<string>();
   const [previewBusy, setPreviewBusy] = useState(false);
+  const [previewWidth, setPreviewWidth] = useState(320);
   const [notice, setNotice] = useState<string>();
   const [stageSize, setStageSize] = useState({ width: 900, height: 620 });
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -119,6 +122,7 @@ export function App() {
   const queueRef = useRef<SourceImage[]>([]);
   const runningRef = useRef(false);
   const panStartRef = useRef<{ x: number; y: number; panX: number; panY: number } | undefined>(undefined);
+  const previewResizeRef = useRef<{ x: number; width: number } | undefined>(undefined);
   const zoomRef = useRef(1);
   const panRef = useRef({ x: 0, y: 0 });
   const viewportFrameRef = useRef<number | undefined>(undefined);
@@ -507,6 +511,14 @@ export function App() {
     setCropPoint(selectedCrop.id, dragHandle, { x, y });
   };
 
+  const onPreviewResizeMove = (event: React.PointerEvent<HTMLButtonElement>) => {
+    const start = previewResizeRef.current;
+    if (!start) return;
+    const previewMaxWidth = window.innerWidth * 0.5;
+    const nextWidth = start.width + start.x - event.clientX;
+    setPreviewWidth(Math.min(previewMaxWidth, Math.max(previewMinWidth, nextWidth)));
+  };
+
   const onDrop = (event: React.DragEvent) => {
     event.preventDefault();
     addFiles(event.dataTransfer.files);
@@ -664,7 +676,26 @@ export function App() {
         </div>
 
         {!previewCollapsed && (
-          <aside className="previewPanel">
+          <aside className="previewPanel" style={{ width: previewWidth }}>
+            <button
+              className="previewResizeHandle"
+              type="button"
+              aria-label="Resize preview"
+              title="Resize preview"
+              onPointerDown={(event) => {
+                previewResizeRef.current = { x: event.clientX, width: previewWidth };
+                event.currentTarget.setPointerCapture(event.pointerId);
+              }}
+              onPointerMove={onPreviewResizeMove}
+              onPointerUp={() => {
+                previewResizeRef.current = undefined;
+              }}
+              onPointerCancel={() => {
+                previewResizeRef.current = undefined;
+              }}
+            >
+              <GripVertical size={16} />
+            </button>
             <div className="panelHeader">
               <span>Preview</span>
               {previewBusy && <Loader2 className="spin" size={16} />}

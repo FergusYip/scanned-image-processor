@@ -164,7 +164,7 @@ input[type="checkbox"] {
 .workspace {
   min-height: 0;
   display: grid;
-  grid-template-columns: minmax(0, 1fr) 320px;
+  grid-template-columns: minmax(0, 1fr) auto;
 }
 
 .stage {
@@ -271,11 +271,36 @@ input[type="checkbox"] {
 }
 
 .previewPanel {
-  min-width: 0;
+  position: relative;
+  min-width: 260px;
+  max-width: 50vw;
   border-left: 1px solid var(--line);
   background: var(--surface-1);
   display: grid;
   grid-template-rows: 44px minmax(180px, 1fr) auto;
+}
+
+.previewResizeHandle {
+  position: absolute;
+  z-index: 2;
+  top: 0;
+  bottom: 0;
+  left: -7px;
+  width: 14px;
+  display: grid;
+  place-items: center;
+  padding: 0;
+  color: var(--muted);
+  background: transparent;
+  border: 0;
+  cursor: col-resize;
+}
+
+.previewResizeHandle:hover,
+.previewResizeHandle:focus-visible {
+  color: var(--ink);
+  background: oklch(0.62 0.14 260 / 0.16);
+  outline: 0;
 }
 
 .panelHeader {
@@ -454,8 +479,15 @@ input[type="checkbox"] {
   }
 
   .previewPanel {
+    width: auto !important;
+    min-width: 0;
+    max-width: none;
     border-left: 0;
     border-top: 1px solid var(--line);
+  }
+
+  .previewResizeHandle {
+    display: none;
   }
 }
 
