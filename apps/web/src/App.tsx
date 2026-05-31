@@ -208,7 +208,6 @@ export function App() {
             };
           }),
         );
-        setNotice(result.engine === "opencv" ? "Detection completed with the OpenCV worker." : "Detection completed with the canvas fallback.");
       } else if (event.data.failure) {
         updateSource(event.data.failure.sourceId, (current) => ({ ...current, status: "error", error: event.data.failure!.message }));
       }
