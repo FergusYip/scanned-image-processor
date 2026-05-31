@@ -37,8 +37,8 @@ import { renderCropBlob, renderCropCanvas } from "./lib/canvasCrop";
 const supportedTypes = new Set(["image/jpeg", "image/png", "image/webp"]);
 const detectionTimeoutMs = 20000;
 const previewMinWidth = 260;
-const viewfinderSize = 132;
-const viewfinderMagnification = 2.5;
+const viewfinderSize = 172;
+const viewfinderMagnification = 4;
 
 const initialSettings: AppSettings = {
   minCropAreaPercent: 4,
