@@ -492,17 +492,18 @@ export function App() {
     URL.revokeObjectURL(url);
   };
 
-  const onOverlayPointerMove = (event: React.PointerEvent) => {
-    if (panStartRef.current && dragHandle === undefined) {
-      scheduleViewport({
-        zoom: zoomRef.current,
-        pan: {
-          x: panStartRef.current.panX + event.clientX - panStartRef.current.x,
-          y: panStartRef.current.panY + event.clientY - panStartRef.current.y,
-        },
-      });
-      return;
-    }
+  const onStagePointerMove = (event: React.PointerEvent<HTMLDivElement>) => {
+    if (!panStartRef.current || dragHandle !== undefined) return;
+    scheduleViewport({
+      zoom: zoomRef.current,
+      pan: {
+        x: panStartRef.current.panX + event.clientX - panStartRef.current.x,
+        y: panStartRef.current.panY + event.clientY - panStartRef.current.y,
+      },
+    });
+  };
+
+  const onOverlayPointerMove = (event: React.PointerEvent<HTMLDivElement>) => {
     if (!activeSource || !selectedCrop || dragHandle === undefined || !imageMetrics) return;
     const rect = event.currentTarget.getBoundingClientRect();
     const scale = imageMetrics.fit * zoom;
@@ -604,10 +605,23 @@ export function App() {
         <div
           ref={stageRef}
           className="stage"
+          data-pannable={activeSource ? "true" : undefined}
           onWheel={(event) => {
             if (!activeSource) return;
             event.preventDefault();
             setZoomAroundPoint(zoomRef.current * (event.deltaY > 0 ? 0.92 : 1.08), { x: event.clientX, y: event.clientY });
+          }}
+          onPointerDown={(event) => {
+            if (!activeSource || event.button !== 0) return;
+            panStartRef.current = { x: event.clientX, y: event.clientY, panX: panRef.current.x, panY: panRef.current.y };
+            event.currentTarget.setPointerCapture(event.pointerId);
+          }}
+          onPointerMove={onStagePointerMove}
+          onPointerUp={() => {
+            panStartRef.current = undefined;
+          }}
+          onPointerCancel={() => {
+            panStartRef.current = undefined;
           }}
         >
           {!activeSource && (
@@ -622,15 +636,9 @@ export function App() {
               className="imageLayer"
               style={{ width: imageMetrics.width, height: imageMetrics.height, transform: `translate(${imageMetrics.left}px, ${imageMetrics.top}px) scale(${zoom})` }}
               onDragStart={(event) => event.preventDefault()}
-              onPointerDown={(event) => {
-                if (event.button !== 0) return;
-                panStartRef.current = { x: event.clientX, y: event.clientY, panX: panRef.current.x, panY: panRef.current.y };
-                event.currentTarget.setPointerCapture(event.pointerId);
-              }}
               onPointerMove={onOverlayPointerMove}
               onPointerUp={() => {
                 setDragHandle(undefined);
-                panStartRef.current = undefined;
               }}
             >
               <img draggable={false} src={activeSource.objectUrl} alt={activeSource.fileName} onDragStart={(event) => event.preventDefault()} />

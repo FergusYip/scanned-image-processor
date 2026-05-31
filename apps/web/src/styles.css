@@ -179,6 +179,11 @@ input[type="checkbox"] {
     oklch(0.1 0 0);
 }
 
+.stage[data-pannable="true"] {
+  cursor: grab;
+  touch-action: none;
+}
+
 .dropZone {
   display: grid;
   place-items: center;
@@ -205,7 +210,6 @@ input[type="checkbox"] {
 .imageLayer {
   position: relative;
   touch-action: none;
-  cursor: grab;
   contain: layout paint;
   transform-origin: center;
   will-change: transform;
