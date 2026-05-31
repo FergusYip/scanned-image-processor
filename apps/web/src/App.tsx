@@ -112,12 +112,17 @@ export function App() {
   const [previewUrl, setPreviewUrl] = useState<string>();
   const [previewBusy, setPreviewBusy] = useState(false);
   const [notice, setNotice] = useState<string>();
+  const [stageSize, setStageSize] = useState({ width: 900, height: 620 });
   const fileInputRef = useRef<HTMLInputElement>(null);
   const stageRef = useRef<HTMLDivElement>(null);
   const workerRef = useRef<Worker | undefined>(undefined);
   const queueRef = useRef<SourceImage[]>([]);
   const runningRef = useRef(false);
   const panStartRef = useRef<{ x: number; y: number; panX: number; panY: number } | undefined>(undefined);
+  const zoomRef = useRef(1);
+  const panRef = useRef({ x: 0, y: 0 });
+  const viewportFrameRef = useRef<number | undefined>(undefined);
+  const pendingViewportRef = useRef<{ zoom: number; pan: Point } | undefined>(undefined);
 
   const activeSource = sources.find((source) => source.id === activeSourceId);
   const selectedCrop = activeSource?.crops.find((crop) => crop.id === activeSource.selectedCropId);
@@ -294,51 +299,102 @@ export function App() {
     }));
   };
 
-  const imageMetrics = useMemo(() => {
+  const applyViewport = useCallback((next: { zoom: number; pan: Point }) => {
+    zoomRef.current = next.zoom;
+    panRef.current = next.pan;
+    setZoom(next.zoom);
+    setPan(next.pan);
+  }, []);
+
+  const scheduleViewport = useCallback((next: { zoom: number; pan: Point }) => {
+    zoomRef.current = next.zoom;
+    panRef.current = next.pan;
+    pendingViewportRef.current = next;
+    if (viewportFrameRef.current !== undefined) return;
+    viewportFrameRef.current = window.requestAnimationFrame(() => {
+      viewportFrameRef.current = undefined;
+      const pending = pendingViewportRef.current;
+      pendingViewportRef.current = undefined;
+      if (!pending) return;
+      setZoom(pending.zoom);
+      setPan(pending.pan);
+    });
+  }, []);
+
+  const resetViewport = useCallback(() => applyViewport({ zoom: 1, pan: { x: 0, y: 0 } }), [applyViewport]);
+
+  const baseImageMetrics = useMemo(() => {
     if (!activeSource) return undefined;
-    const stage = stageRef.current?.getBoundingClientRect();
-    const maxWidth = Math.max(320, (stage?.width ?? 900) - 56);
-    const maxHeight = Math.max(260, (stage?.height ?? 620) - 56);
+    const maxWidth = Math.max(320, stageSize.width - 56);
+    const maxHeight = Math.max(260, stageSize.height - 56);
     const fit = Math.min(maxWidth / activeSource.originalWidth, maxHeight / activeSource.originalHeight, 1);
-    const width = activeSource.originalWidth * fit * zoom;
-    const height = activeSource.originalHeight * fit * zoom;
-    return { fit, width, height, left: pan.x, top: pan.y };
-  }, [activeSource, zoom, pan]);
+    const width = activeSource.originalWidth * fit;
+    const height = activeSource.originalHeight * fit;
+    return { fit, width, height };
+  }, [activeSource, stageSize.height, stageSize.width]);
+
+  const imageMetrics = baseImageMetrics ? { ...baseImageMetrics, left: pan.x, top: pan.y } : undefined;
 
   const setZoomAroundPoint = useCallback(
-    (nextZoom: number, anchor?: Point) => {
+    (nextZoom: number, anchor?: Point, immediate = false) => {
       const clamped = Math.min(6, Math.max(0.2, nextZoom));
       const stage = stageRef.current?.getBoundingClientRect();
 
       if (!activeSource || !imageMetrics || !stage) {
-        setZoom(clamped);
+        const next = { zoom: clamped, pan: panRef.current };
+        if (immediate) applyViewport(next);
+        else scheduleViewport(next);
         return;
       }
 
+      const currentZoom = zoomRef.current;
+      const currentPan = panRef.current;
       const focus = anchor ?? { x: stage.left + stage.width / 2, y: stage.top + stage.height / 2 };
-      const oldScale = imageMetrics.fit * zoom;
+      const oldScale = imageMetrics.fit * currentZoom;
       const nextScale = imageMetrics.fit * clamped;
-      const oldLeft = stage.left + stage.width / 2 - imageMetrics.width / 2 + pan.x;
-      const oldTop = stage.top + stage.height / 2 - imageMetrics.height / 2 + pan.y;
+      const oldLeft = stage.left + stage.width / 2 - (imageMetrics.width * currentZoom) / 2 + currentPan.x;
+      const oldTop = stage.top + stage.height / 2 - (imageMetrics.height * currentZoom) / 2 + currentPan.y;
       const sourceX = (focus.x - oldLeft) / oldScale;
       const sourceY = (focus.y - oldTop) / oldScale;
       const nextWidth = activeSource.originalWidth * nextScale;
       const nextHeight = activeSource.originalHeight * nextScale;
 
-      setZoom(clamped);
-      setPan({
-        x: focus.x - (stage.left + stage.width / 2 - nextWidth / 2) - sourceX * nextScale,
-        y: focus.y - (stage.top + stage.height / 2 - nextHeight / 2) - sourceY * nextScale,
-      });
+      const next = {
+        zoom: clamped,
+        pan: {
+          x: focus.x - (stage.left + stage.width / 2 - nextWidth / 2) - sourceX * nextScale,
+          y: focus.y - (stage.top + stage.height / 2 - nextHeight / 2) - sourceY * nextScale,
+        },
+      };
+      if (immediate) applyViewport(next);
+      else scheduleViewport(next);
     },
-    [activeSource, imageMetrics, pan.x, pan.y, zoom],
+    [activeSource, applyViewport, imageMetrics, scheduleViewport],
   );
 
   useEffect(() => {
-    setZoom(1);
-    setPan({ x: 0, y: 0 });
+    resetViewport();
     setSelectedHandle(undefined);
-  }, [activeSourceId]);
+  }, [activeSourceId, resetViewport]);
+
+  useEffect(() => {
+    return () => {
+      if (viewportFrameRef.current !== undefined) window.cancelAnimationFrame(viewportFrameRef.current);
+    };
+  }, []);
+
+  useEffect(() => {
+    const stage = stageRef.current;
+    if (!stage) return;
+    const updateSize = () => {
+      const rect = stage.getBoundingClientRect();
+      setStageSize({ width: rect.width, height: rect.height });
+    };
+    updateSize();
+    const observer = new ResizeObserver(updateSize);
+    observer.observe(stage);
+    return () => observer.disconnect();
+  }, []);
 
   useEffect(() => {
     if (!activeSource || !selectedCrop) {
@@ -373,11 +429,10 @@ export function App() {
   useEffect(() => {
     const onKeyDown = (event: KeyboardEvent) => {
       if (event.target instanceof HTMLInputElement) return;
-      if (event.key === "+") setZoomAroundPoint(zoom * 1.15);
-      if (event.key === "-") setZoomAroundPoint(zoom / 1.15);
+      if (event.key === "+") setZoomAroundPoint(zoomRef.current * 1.15, undefined, true);
+      if (event.key === "-") setZoomAroundPoint(zoomRef.current / 1.15, undefined, true);
       if (event.key === "0") {
-        setZoom(1);
-        setPan({ x: 0, y: 0 });
+        resetViewport();
       }
       if (event.key === "[") selectCropOffset(-1);
       if (event.key === "]") selectCropOffset(1);
@@ -435,9 +490,12 @@ export function App() {
 
   const onOverlayPointerMove = (event: React.PointerEvent) => {
     if (panStartRef.current && dragHandle === undefined) {
-      setPan({
-        x: panStartRef.current.panX + event.clientX - panStartRef.current.x,
-        y: panStartRef.current.panY + event.clientY - panStartRef.current.y,
+      scheduleViewport({
+        zoom: zoomRef.current,
+        pan: {
+          x: panStartRef.current.panX + event.clientX - panStartRef.current.x,
+          y: panStartRef.current.panY + event.clientY - panStartRef.current.y,
+        },
       });
       return;
     }
@@ -493,7 +551,7 @@ export function App() {
           <IconButton label="Zoom in" onClick={() => setZoomAroundPoint(zoom * 1.15)}>
             <ZoomIn size={18} />
           </IconButton>
-          <IconButton label="Fit image" onClick={() => { setZoom(1); setPan({ x: 0, y: 0 }); }}>
+          <IconButton label="Fit image" onClick={resetViewport}>
             <Focus size={18} />
           </IconButton>
         </div>
@@ -531,7 +589,15 @@ export function App() {
       </header>
 
       <section className="workspace">
-        <div ref={stageRef} className="stage">
+        <div
+          ref={stageRef}
+          className="stage"
+          onWheel={(event) => {
+            if (!activeSource) return;
+            event.preventDefault();
+            setZoomAroundPoint(zoomRef.current * (event.deltaY > 0 ? 0.92 : 1.08), { x: event.clientX, y: event.clientY });
+          }}
+        >
           {!activeSource && (
             <button className="dropZone" type="button" onClick={() => fileInputRef.current?.click()}>
               <FileImage size={34} />
@@ -542,21 +608,17 @@ export function App() {
           {activeSource && imageMetrics && (
             <div
               className="imageLayer"
-              style={{ width: imageMetrics.width, height: imageMetrics.height, transform: `translate(${imageMetrics.left}px, ${imageMetrics.top}px)` }}
+              style={{ width: imageMetrics.width, height: imageMetrics.height, transform: `translate(${imageMetrics.left}px, ${imageMetrics.top}px) scale(${zoom})` }}
               onDragStart={(event) => event.preventDefault()}
               onPointerDown={(event) => {
                 if (event.button !== 0) return;
-                panStartRef.current = { x: event.clientX, y: event.clientY, panX: pan.x, panY: pan.y };
+                panStartRef.current = { x: event.clientX, y: event.clientY, panX: panRef.current.x, panY: panRef.current.y };
                 event.currentTarget.setPointerCapture(event.pointerId);
               }}
               onPointerMove={onOverlayPointerMove}
               onPointerUp={() => {
                 setDragHandle(undefined);
                 panStartRef.current = undefined;
-              }}
-              onWheel={(event) => {
-                event.preventDefault();
-                setZoomAroundPoint(zoom * (event.deltaY > 0 ? 0.92 : 1.08), { x: event.clientX, y: event.clientY });
               }}
             >
               <img draggable={false} src={activeSource.objectUrl} alt={activeSource.fileName} onDragStart={(event) => event.preventDefault()} />

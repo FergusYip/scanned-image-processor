@@ -206,7 +206,9 @@ input[type="checkbox"] {
   position: relative;
   touch-action: none;
   cursor: grab;
-  transition: transform 160ms ease;
+  contain: layout paint;
+  transform-origin: center;
+  will-change: transform;
 }
 
 .imageLayer > img {
