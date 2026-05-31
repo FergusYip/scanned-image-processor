@@ -29,6 +29,15 @@ type Component = {
   bottom: number;
   count: number;
   boundary: Point[];
+  columnCounts: Map<number, number>;
+  rowCounts: Map<number, number>;
+};
+
+type Bounds = {
+  left: number;
+  top: number;
+  right: number;
+  bottom: number;
 };
 
 function orderedQuadFromRect(left: number, top: number, right: number, bottom: number): Quad {
@@ -85,10 +94,60 @@ function buildMask(data: Uint8ClampedArray, width: number, height: number, bg: n
       const b = data[offset + 2];
       const distance = Math.hypot(r - bg[0], g - bg[1], b - bg[2]);
       const sat = saturation(r, g, b);
-      mask[y * width + x] = distance > 26 || sat > 38 ? 1 : 0;
+      const brightness = (r + g + b) / 3;
+      const isLightNeutral = brightness > 235 && sat < 24;
+      mask[y * width + x] = !isLightNeutral && (distance > 26 || sat > 38) ? 1 : 0;
     }
   }
   return mask;
+}
+
+function buildBackgroundMask(data: Uint8ClampedArray, width: number, height: number, bg: number[]) {
+  const mask = new Uint8Array(width * height);
+  for (let y = 0; y < height; y += 1) {
+    for (let x = 0; x < width; x += 1) {
+      const offset = (y * width + x) * 4;
+      const r = data[offset];
+      const g = data[offset + 1];
+      const b = data[offset + 2];
+      const colorDistance = Math.hypot(r - bg[0], g - bg[1], b - bg[2]);
+      mask[y * width + x] = colorDistance <= 20 && saturation(r, g, b) <= 28 ? 1 : 0;
+    }
+  }
+  return mask;
+}
+
+function splitHorizontalGaps(mask: Uint8Array, width: number, height: number) {
+  const split = new Uint8Array(mask);
+  const minRun = Math.max(8, Math.round(height * 0.003));
+  const sparseThreshold = Math.max(6, Math.round(width * 0.015));
+  let gapStart: number | undefined;
+
+  for (let y = 0; y < height; y += 1) {
+    let active = 0;
+    const offset = y * width;
+    for (let x = 0; x < width; x += 1) {
+      active += mask[offset + x];
+    }
+
+    if (active <= sparseThreshold) {
+      gapStart ??= y;
+      continue;
+    }
+
+    if (gapStart !== undefined) {
+      if (y - gapStart >= minRun) {
+        split.fill(0, gapStart * width, y * width);
+      }
+      gapStart = undefined;
+    }
+  }
+
+  if (gapStart !== undefined && height - gapStart >= minRun) {
+    split.fill(0, gapStart * width, height * width);
+  }
+
+  return split;
 }
 
 function isBoundaryPixel(mask: Uint8Array, width: number, height: number, x: number, y: number) {
@@ -304,6 +363,133 @@ function padQuad(quad: Quad, pad: number, width: number, height: number): Quad {
   }) as Quad;
 }
 
+function backgroundFraction(mask: Uint8Array, width: number, left: number, top: number, right: number, bottom: number) {
+  let background = 0;
+  let total = 0;
+  for (let y = top; y <= bottom; y += 1) {
+    for (let x = left; x <= right; x += 1) {
+      background += mask[y * width + x];
+      total += 1;
+    }
+  }
+  return total === 0 ? 1 : background / total;
+}
+
+function refineBoundsFromBackground(component: Component, backgroundMask: Uint8Array, width: number, height: number): Bounds {
+  const margin = Math.round(Math.min(width, height) * 0.016);
+  const roi: Bounds = {
+    left: Math.max(0, component.left - margin),
+    top: Math.max(0, component.top - margin),
+    right: Math.min(width - 1, component.right + margin),
+    bottom: Math.min(height - 1, component.bottom + margin),
+  };
+
+  const threshold = 0.88;
+  let left = roi.left;
+  for (let x = roi.left; x <= roi.right; x += 1) {
+    if (backgroundFraction(backgroundMask, width, x, roi.top, x, roi.bottom) < threshold) {
+      left = x;
+      break;
+    }
+  }
+
+  let right = roi.right;
+  for (let x = roi.right; x >= roi.left; x -= 1) {
+    if (backgroundFraction(backgroundMask, width, x, roi.top, x, roi.bottom) < threshold) {
+      right = x;
+      break;
+    }
+  }
+
+  let top = roi.top;
+  for (let y = roi.top; y <= roi.bottom; y += 1) {
+    if (backgroundFraction(backgroundMask, width, roi.left, y, roi.right, y) < threshold) {
+      top = y;
+      break;
+    }
+  }
+
+  let bottom = roi.bottom;
+  for (let y = roi.bottom; y >= roi.top; y -= 1) {
+    if (backgroundFraction(backgroundMask, width, roi.left, y, roi.right, y) < threshold) {
+      bottom = y;
+      break;
+    }
+  }
+
+  if (right <= left || bottom <= top) {
+    return component;
+  }
+
+  return { left, top, right, bottom };
+}
+
+function denseAxisBounds(counts: Map<number, number>, low: number, high: number) {
+  let maxCount = 0;
+  for (const count of counts.values()) maxCount = Math.max(maxCount, count);
+  const threshold = Math.max(10, Math.floor(maxCount * 0.08));
+
+  let start = low;
+  for (let value = low; value <= high; value += 1) {
+    if ((counts.get(value) ?? 0) >= threshold) {
+      start = value;
+      break;
+    }
+  }
+
+  let end = high;
+  for (let value = high; value >= low; value -= 1) {
+    if ((counts.get(value) ?? 0) >= threshold) {
+      end = value;
+      break;
+    }
+  }
+
+  return { start, end };
+}
+
+function denseComponentBounds(component: Component): Bounds {
+  const x = denseAxisBounds(component.columnCounts, component.left, component.right);
+  const y = denseAxisBounds(component.rowCounts, component.top, component.bottom);
+  if (x.end <= x.start || y.end <= y.start) return component;
+  return {
+    left: x.start,
+    top: y.start,
+    right: x.end,
+    bottom: y.end,
+  };
+}
+
+function insetBounds(bounds: Bounds, inset: number): Bounds {
+  return {
+    left: Math.min(bounds.left + inset, bounds.right),
+    top: Math.min(bounds.top + inset, bounds.bottom),
+    right: Math.max(bounds.right - inset, bounds.left),
+    bottom: Math.max(bounds.bottom - inset, bounds.top),
+  };
+}
+
+function keepPlausibleImageEdges(refined: Bounds, component: Component, width: number, height: number): Bounds {
+  const edgeMargin = Math.round(Math.min(width, height) * 0.02);
+  return {
+    left: refined.left <= 1 && component.left > edgeMargin ? component.left : refined.left,
+    top: refined.top <= 1 && component.top > edgeMargin ? component.top : refined.top,
+    right: refined.right >= width - 2 && component.right < width - edgeMargin ? component.right : refined.right,
+    bottom: refined.bottom >= height - 2 && component.bottom < height - edgeMargin ? component.bottom : refined.bottom,
+  };
+}
+
+function hasLongDiagonalEdge(quad: Quad, bounds: Bounds) {
+  const boundsWidth = Math.max(1, bounds.right - bounds.left + 1);
+  const boundsHeight = Math.max(1, bounds.bottom - bounds.top + 1);
+  return quad.some((point, index) => {
+    const next = quad[(index + 1) % quad.length];
+    const horizontalSpan = Math.abs(next.x - point.x) / boundsWidth;
+    const verticalSpan = Math.abs(next.y - point.y) / boundsHeight;
+    return horizontalSpan > 0.08 && verticalSpan > 0.3;
+  });
+}
+
 function findComponents(mask: Uint8Array, width: number, height: number, minArea: number) {
   const seen = new Uint8Array(mask.length);
   const components: Component[] = [];
@@ -321,6 +507,8 @@ function findComponents(mask: Uint8Array, width: number, height: number, minArea
     let bottom = 0;
     let count = 0;
     const boundary: Point[] = [];
+    const columnCounts = new Map<number, number>();
+    const rowCounts = new Map<number, number>();
 
     while (cursor < queue.length) {
       const next = queue[cursor];
@@ -332,6 +520,8 @@ function findComponents(mask: Uint8Array, width: number, height: number, minArea
       right = Math.max(right, x);
       bottom = Math.max(bottom, y);
       count += 1;
+      columnCounts.set(x, (columnCounts.get(x) ?? 0) + 1);
+      rowCounts.set(y, (rowCounts.get(y) ?? 0) + 1);
       if (isBoundaryPixel(mask, width, height, x, y)) boundary.push({ x, y });
 
       const neighbors = [next - 1, next + 1, next - width, next + width];
@@ -346,7 +536,7 @@ function findComponents(mask: Uint8Array, width: number, height: number, minArea
 
     const boxArea = (right - left + 1) * (bottom - top + 1);
     if (count >= minArea && boxArea >= minArea && count / boxArea > 0.18) {
-      components.push({ left, top, right, bottom, count, boundary });
+      components.push({ left, top, right, bottom, count, boundary, columnCounts, rowCounts });
     }
   }
 
@@ -385,13 +575,20 @@ export function detectQuadsFromRgba(image: RgbaImage, options: DetectOptions = {
   const height = Math.max(1, Math.round(image.height * scale));
   const data = resizeRgba(image, width, height);
   const bg = estimateBackground(data, width, height);
-  const mask = buildMask(data, width, height, bg);
+  const mask = splitHorizontalGaps(buildMask(data, width, height, bg), width, height);
+  const backgroundMask = buildBackgroundMask(data, width, height, bg);
   const minArea = width * height * (minCropAreaPercent / 100);
   const components = findComponents(mask, width, height, minArea);
   return components.map((component): Quad => {
-    const pad = Math.round(Math.min(width, height) * 0.004);
-    const fallback = orderedQuadFromRect(component.left, component.top, component.right, component.bottom);
-    const quad = component.boundary.length >= 4 ? (contourQuad(component.boundary, fallback) ?? minAreaQuad(component.boundary, fallback)) : fallback;
+    const denseBounds = denseComponentBounds(component);
+    const refinedBounds = refineBoundsFromBackground({ ...component, ...denseBounds }, backgroundMask, width, height);
+    const bounds = insetBounds(keepPlausibleImageEdges(refinedBounds, { ...component, ...denseBounds }, width, height), 1);
+    const pad = Math.round(Math.min(width, height) * 0.002);
+    const fallback = orderedQuadFromRect(bounds.left, bounds.top, bounds.right, bounds.bottom);
+    const fitted = component.boundary.length >= 4 ? (contourQuad(component.boundary, fallback) ?? minAreaQuad(component.boundary, fallback)) : fallback;
+    const fittedArea = polygonArea(fitted);
+    const fallbackArea = polygonArea(fallback);
+    const quad = fittedArea >= fallbackArea * 0.9 && fittedArea <= fallbackArea * 1.08 && !hasLongDiagonalEdge(fitted, bounds) ? fitted : fallback;
     return padQuad(
       quad.map((point) => ({ x: point.x / scale, y: point.y / scale })) as Quad,
       pad / scale,
