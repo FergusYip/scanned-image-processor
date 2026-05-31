@@ -42,8 +42,9 @@ input:focus-visible {
 }
 
 .appShell {
+  --source-strip-height: 128px;
   display: grid;
-  grid-template-rows: 54px minmax(0, 1fr) 128px;
+  grid-template-rows: 54px minmax(0, 1fr) var(--source-strip-height);
   height: 100vh;
   background:
     linear-gradient(180deg, oklch(0.17 0 0), oklch(0.13 0 0)),
@@ -425,8 +426,12 @@ input[type="checkbox"] {
 
 .sourceStrip {
   display: flex;
+  align-items: center;
   gap: 10px;
+  height: var(--source-strip-height);
+  min-height: var(--source-strip-height);
   overflow-x: auto;
+  overflow-y: hidden;
   padding: 12px;
   border-top: 1px solid var(--line);
   background: oklch(0.14 0 0);
@@ -435,6 +440,7 @@ input[type="checkbox"] {
 .sourceTile {
   position: relative;
   flex: 0 0 76px;
+  height: 94px;
   display: grid;
   place-items: center;
   padding: 8px;
@@ -618,7 +624,7 @@ kbd {
   .appShell {
     min-height: 100vh;
     height: auto;
-    grid-template-rows: auto 1fr 128px;
+    grid-template-rows: auto 1fr var(--source-strip-height);
   }
 
   .topbar {
