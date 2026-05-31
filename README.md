@@ -27,12 +27,12 @@ For local development:
 pnpm --filter @scanned-image-processor/web dev
 ```
 
-The web app processes images client-side. JPG, PNG, and WebP are supported in v1. TIFF decoding, robust EXIF preservation, and full OpenCV parity with the Python pipeline are tracked as follow-up work.
+The web app processes images client-side. JPG, PNG, and WebP are supported in v1. TIFF decoding and robust EXIF preservation are tracked as follow-up work.
 
 ## Current Web Features
 
 - Multi-file upload and drag/drop.
-- Worker-backed crop detection with OpenCV package loading and a canvas fallback path.
+- Worker-backed crop detection using browser canvas APIs.
 - Active source overlay with selectable quadrilateral crops.
 - Corner dragging, keyboard nudging, previous/next crop selection, zoom, and fit controls.
 - Live preview rendered with the same crop renderer used for downloads.

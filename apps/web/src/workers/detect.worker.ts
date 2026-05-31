@@ -373,7 +373,6 @@ self.onmessage = async (event: MessageEvent<RequestMessage>) => {
       width: bitmap.width,
       height: bitmap.height,
       quads,
-      engine: "canvas",
     };
     self.postMessage({ type: "result", result });
   } catch (error) {

@@ -45,7 +45,6 @@ export type DetectionResult = {
   width: number;
   height: number;
   quads: Quad[];
-  engine: "opencv" | "canvas";
 };
 
 export type DetectionFailure = {
