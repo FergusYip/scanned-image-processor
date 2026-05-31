@@ -184,6 +184,10 @@ input[type="checkbox"] {
   touch-action: none;
 }
 
+.stage[data-empty="true"] {
+  cursor: pointer;
+}
+
 .dropZone {
   display: grid;
   place-items: center;

@@ -610,6 +610,11 @@ export function App() {
           ref={stageRef}
           className="stage"
           data-pannable={activeSource ? "true" : undefined}
+          data-empty={!activeSource ? "true" : undefined}
+          onClick={(event) => {
+            if (activeSource || event.target !== event.currentTarget) return;
+            fileInputRef.current?.click();
+          }}
           onWheel={(event) => {
             if (!activeSource) return;
             event.preventDefault();
