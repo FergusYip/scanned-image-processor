@@ -49,6 +49,10 @@ function id(prefix: string) {
   return `${prefix}-${crypto.randomUUID()}`;
 }
 
+function defaultPreviewWidth() {
+  return typeof window === "undefined" ? 320 : window.innerWidth * 0.5;
+}
+
 function IconButton({
   label,
   children,
@@ -113,7 +117,7 @@ export function App() {
   const [dragHandle, setDragHandle] = useState<number>();
   const [previewUrl, setPreviewUrl] = useState<string>();
   const [previewBusy, setPreviewBusy] = useState(false);
-  const [previewWidth, setPreviewWidth] = useState(320);
+  const [previewWidth, setPreviewWidth] = useState(defaultPreviewWidth);
   const [notice, setNotice] = useState<string>();
   const [stageSize, setStageSize] = useState({ width: 900, height: 620 });
   const fileInputRef = useRef<HTMLInputElement>(null);
