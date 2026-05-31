@@ -39,6 +39,7 @@ describe("geometry", () => {
   it("maps trim slider values to bounded tolerances", () => {
     expect(trimAmountToTolerance(0)).toBe(8);
     expect(trimAmountToTolerance(100)).toBe(50);
-    expect(trimAmountToTolerance(200)).toBe(50);
+    expect(trimAmountToTolerance(200)).toBe(92);
+    expect(trimAmountToTolerance(300)).toBe(92);
   });
 });
