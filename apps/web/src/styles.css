@@ -338,11 +338,9 @@ input[type="checkbox"] {
 
 .sourceTile {
   position: relative;
-  flex: 0 0 154px;
+  flex: 0 0 76px;
   display: grid;
-  grid-template-columns: 58px minmax(0, 1fr);
-  gap: 9px;
-  align-items: center;
+  place-items: center;
   padding: 8px;
   border: 1px solid var(--line);
   border-radius: 10px;
@@ -391,34 +389,6 @@ input[type="checkbox"] {
 
 .removeButton {
   right: 6px;
-}
-
-.tileText {
-  min-width: 0;
-  display: grid;
-  gap: 6px;
-}
-
-.tileText span {
-  overflow: hidden;
-  color: var(--ink);
-  font-size: 0.82rem;
-  font-weight: 620;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.tileText small {
-  color: var(--muted);
-}
-
-.tileText small[data-status="processing"],
-.tileText small[data-status="queued"] {
-  color: var(--warning);
-}
-
-.tileText small[data-status="error"] {
-  color: var(--danger);
 }
 
 .addMoreTile {

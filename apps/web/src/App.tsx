@@ -47,14 +47,6 @@ function id(prefix: string) {
   return `${prefix}-${crypto.randomUUID()}`;
 }
 
-function statusLabel(source: SourceImage) {
-  if (source.status === "ready") return `${source.crops.length} crop${source.crops.length === 1 ? "" : "s"}`;
-  if (source.status === "no-crops") return "No crops";
-  if (source.status === "error") return "Error";
-  if (source.status === "processing") return "Processing";
-  return "Queued";
-}
-
 function IconButton({
   label,
   children,
@@ -648,10 +640,6 @@ export function App() {
             <button className="removeButton" type="button" aria-label={`Remove ${source.fileName}`} onClick={() => deleteSource(source.id)}>
               <X size={14} />
             </button>
-            <div className="tileText">
-              <span title={source.fileName}>{source.fileName}</span>
-              <small data-status={source.status}>{statusLabel(source)}</small>
-            </div>
           </div>
         ))}
         {sources.length > 0 && (
