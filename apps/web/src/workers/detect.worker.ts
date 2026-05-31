@@ -98,6 +98,14 @@ function polygonPerimeter(points: Point[]) {
   return points.reduce((sum, point, index) => sum + distance(point, points[(index + 1) % points.length]), 0);
 }
 
+function maxDistanceToPolygon(point: Point, polygon: Point[]) {
+  return Math.min(...polygon.map((start, index) => lineDistance(point, start, polygon[(index + 1) % polygon.length])));
+}
+
+function maxBoundaryDeviation(boundary: Point[], polygon: Point[]) {
+  return Math.max(...boundary.map((point) => maxDistanceToPolygon(point, polygon)));
+}
+
 function lineDistance(point: Point, start: Point, end: Point) {
   const length = distance(start, end);
   if (length === 0) return distance(point, start);
@@ -170,17 +178,27 @@ function contourQuad(points: Point[], fallback: Quad): Quad | undefined {
   const perimeter = polygonPerimeter(hull);
   if (hullArea <= 0 || perimeter <= 0) return undefined;
 
+  let best:
+    | {
+        quad: Quad;
+        score: number;
+      }
+    | undefined;
+
   for (const ratio of [0.006, 0.01, 0.014, 0.02, 0.028, 0.04, 0.055, 0.075]) {
     const simplified = simplifyClosedHull(hull, perimeter * ratio);
     if (simplified.length !== 4) continue;
 
     const area = polygonArea(simplified);
     if (area >= hullArea * 0.82 && area >= fallbackArea * 0.55) {
-      return orderQuad(simplified);
+      const deviation = maxBoundaryDeviation(hull, simplified);
+      const areaLoss = Math.max(0, hullArea - area) / hullArea;
+      const score = deviation / perimeter + areaLoss * 0.5;
+      if (!best || score < best.score) best = { quad: orderQuad(simplified), score };
     }
   }
 
-  return undefined;
+  return best?.quad;
 }
 
 function orderQuad(points: Point[]): Quad {
