@@ -6,6 +6,7 @@ import {
   Download,
   FileImage,
   Focus,
+  HelpCircle,
   ImagePlus,
   Loader2,
   PanelRightClose,
@@ -47,12 +48,30 @@ const initialSettings: AppSettings = {
   jpegQuality: 92,
 };
 
+const keyboardHelp = [
+  { keys: ["Delete", "Backspace"], label: "Delete selected crop" },
+  { keys: ["[", "]"], label: "Previous or next crop" },
+  { keys: ["P", "N"], label: "Previous or next crop" },
+  { keys: ["Shift + [", "Shift + ]"], label: "Previous or next image" },
+  { keys: ["PageUp", "PageDown"], label: "Previous or next image" },
+  { keys: ["Arrow keys"], label: "Nudge selected handle" },
+  { keys: ["Shift + Arrow keys"], label: "Nudge selected handle by 10 px" },
+  { keys: ["+", "-"], label: "Zoom in or out" },
+  { keys: ["0"], label: "Fit image" },
+  { keys: ["Esc"], label: "Clear selected handle or close this help" },
+];
+
 function id(prefix: string) {
   return `${prefix}-${crypto.randomUUID()}`;
 }
 
 function defaultPreviewWidth() {
   return typeof window === "undefined" ? 320 : window.innerWidth * 0.5;
+}
+
+function isEditableTarget(target: EventTarget | null) {
+  if (!(target instanceof HTMLElement)) return false;
+  return target instanceof HTMLInputElement || target instanceof HTMLTextAreaElement || target instanceof HTMLSelectElement || target.isContentEditable;
 }
 
 function IconButton({
@@ -112,6 +131,7 @@ export function App() {
   const [activeSourceId, setActiveSourceId] = useState<string>();
   const [settings, setSettings] = useState(initialSettings);
   const [settingsOpen, setSettingsOpen] = useState(false);
+  const [helpOpen, setHelpOpen] = useState(false);
   const [previewCollapsed, setPreviewCollapsed] = useState(false);
   const [zoom, setZoom] = useState(1);
   const [pan, setPan] = useState({ x: 0, y: 0 });
@@ -254,8 +274,10 @@ export function App() {
     if (!activeSource || !selectedCrop) return;
     if (!confirm("Delete selected crop?")) return;
     updateSource(activeSource.id, (source) => {
+      const deletedIndex = source.crops.findIndex((crop) => crop.id === selectedCrop.id);
       const crops = source.crops.filter((crop) => crop.id !== selectedCrop.id);
-      return { ...source, crops, selectedCropId: crops[0]?.id, status: crops.length ? "ready" : "no-crops" };
+      const nextIndex = Math.min(Math.max(deletedIndex, 0), crops.length - 1);
+      return { ...source, crops, selectedCropId: crops[nextIndex]?.id, status: crops.length ? "ready" : "no-crops" };
     });
   };
 
@@ -287,6 +309,13 @@ export function App() {
     const current = Math.max(0, activeSource.crops.findIndex((crop) => crop.id === activeSource.selectedCropId));
     const next = (current + offset + activeSource.crops.length) % activeSource.crops.length;
     updateSource(activeSource.id, (source) => ({ ...source, selectedCropId: source.crops[next].id }));
+  };
+
+  const selectSourceOffset = (offset: number) => {
+    if (sources.length === 0) return;
+    const current = Math.max(0, sources.findIndex((source) => source.id === activeSourceId));
+    const next = (current + offset + sources.length) % sources.length;
+    setActiveSourceId(sources[next].id);
   };
 
   const updateSelectedCrop = (updater: (crop: CropRegion) => CropRegion) => {
@@ -452,16 +481,61 @@ export function App() {
 
   useEffect(() => {
     const onKeyDown = (event: KeyboardEvent) => {
-      if (event.target instanceof HTMLInputElement) return;
-      if (event.key === "+") setZoomAroundPoint(zoomRef.current * 1.15, undefined, true);
-      if (event.key === "-") setZoomAroundPoint(zoomRef.current / 1.15, undefined, true);
+      if (isEditableTarget(event.target)) return;
+      if (event.ctrlKey || event.metaKey || event.altKey) return;
+      if (helpOpen) {
+        if (event.key === "Escape") {
+          event.preventDefault();
+          setHelpOpen(false);
+        }
+        return;
+      }
+      const key = event.key.toLowerCase();
+      if (event.key === "+" || event.key === "=") {
+        event.preventDefault();
+        setZoomAroundPoint(zoomRef.current * 1.15, undefined, true);
+      }
+      if (event.key === "-") {
+        event.preventDefault();
+        setZoomAroundPoint(zoomRef.current / 1.15, undefined, true);
+      }
       if (event.key === "0") {
+        event.preventDefault();
         resetViewport();
       }
-      if (event.key === "[") selectCropOffset(-1);
-      if (event.key === "]") selectCropOffset(1);
-      if (event.key === "Escape") setSelectedHandle(undefined);
-      if (event.key === "Delete" && selectedCrop) deleteCrop();
+      if (event.key === "[" || event.key === "{") {
+        event.preventDefault();
+        if (event.shiftKey || event.key === "{") selectSourceOffset(-1);
+        else selectCropOffset(-1);
+      }
+      if (event.key === "]" || event.key === "}") {
+        event.preventDefault();
+        if (event.shiftKey || event.key === "}") selectSourceOffset(1);
+        else selectCropOffset(1);
+      }
+      if (key === "p") {
+        event.preventDefault();
+        selectCropOffset(-1);
+      }
+      if (key === "n") {
+        event.preventDefault();
+        selectCropOffset(1);
+      }
+      if (event.key === "PageUp") {
+        event.preventDefault();
+        selectSourceOffset(-1);
+      }
+      if (event.key === "PageDown") {
+        event.preventDefault();
+        selectSourceOffset(1);
+      }
+      if (event.key === "Escape") {
+        setSelectedHandle(undefined);
+      }
+      if ((event.key === "Delete" || event.key === "Backspace") && selectedCrop) {
+        event.preventDefault();
+        deleteCrop();
+      }
       if (selectedHandle !== undefined && selectedCrop && activeSource && ["ArrowLeft", "ArrowRight", "ArrowUp", "ArrowDown"].includes(event.key)) {
         event.preventDefault();
         const amount = event.shiftKey ? 10 : 1;
@@ -607,6 +681,9 @@ export function App() {
           </button>
           <IconButton label="Settings" onClick={() => setSettingsOpen((current) => !current)} active={settingsOpen}>
             <Settings size={18} />
+          </IconButton>
+          <IconButton label="Keyboard help" onClick={() => setHelpOpen(true)} active={helpOpen}>
+            <HelpCircle size={18} />
           </IconButton>
           <IconButton label={previewCollapsed ? "Show preview" : "Hide preview"} onClick={() => setPreviewCollapsed((current) => !current)}>
             {previewCollapsed ? <PanelRightOpen size={18} /> : <PanelRightClose size={18} />}
@@ -809,6 +886,31 @@ export function App() {
         <button className="toast" type="button" onClick={() => setNotice(undefined)}>
           {notice}
         </button>
+      )}
+
+      {helpOpen && (
+        <div className="modalBackdrop" role="presentation" onMouseDown={() => setHelpOpen(false)}>
+          <section className="helpModal" role="dialog" aria-modal="true" aria-labelledby="keyboard-help-title" onMouseDown={(event) => event.stopPropagation()}>
+            <div className="modalHeader">
+              <h2 id="keyboard-help-title">Keyboard help</h2>
+              <IconButton label="Close keyboard help" onClick={() => setHelpOpen(false)}>
+                <X size={16} />
+              </IconButton>
+            </div>
+            <dl className="shortcutList">
+              {keyboardHelp.map((item) => (
+                <div key={item.keys.join("|")} className="shortcutRow">
+                  <dt>
+                    {item.keys.map((key) => (
+                      <kbd key={key}>{key}</kbd>
+                    ))}
+                  </dt>
+                  <dd>{item.label}</dd>
+                </div>
+              ))}
+            </dl>
+          </section>
+        </div>
       )}
     </main>
   );

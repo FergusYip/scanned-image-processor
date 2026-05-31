@@ -514,6 +514,92 @@ input[type="checkbox"] {
   cursor: pointer;
 }
 
+.modalBackdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 40;
+  display: grid;
+  place-items: center;
+  padding: 20px;
+  background: oklch(0.05 0 0 / 0.72);
+}
+
+.helpModal {
+  width: min(520px, 100%);
+  max-height: min(720px, calc(100vh - 40px));
+  overflow: auto;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: var(--surface-1);
+  box-shadow: 0 8px 8px oklch(0 0 0 / 0.34);
+}
+
+.modalHeader {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  min-height: 48px;
+  padding: 8px 10px 8px 16px;
+  border-bottom: 1px solid var(--line);
+}
+
+.modalHeader h2 {
+  margin: 0;
+  color: var(--ink);
+  font-size: 0.98rem;
+  font-weight: 650;
+  line-height: 1.2;
+}
+
+.shortcutList {
+  display: grid;
+  gap: 0;
+  margin: 0;
+  padding: 8px 0;
+}
+
+.shortcutRow {
+  display: grid;
+  grid-template-columns: minmax(172px, auto) 1fr;
+  gap: 18px;
+  align-items: center;
+  padding: 10px 16px;
+}
+
+.shortcutRow + .shortcutRow {
+  border-top: 1px solid oklch(0.27 0 0);
+}
+
+.shortcutRow dt {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin: 0;
+}
+
+.shortcutRow dd {
+  margin: 0;
+  color: var(--muted);
+  font-size: 0.86rem;
+  line-height: 1.35;
+}
+
+kbd {
+  min-width: 28px;
+  padding: 3px 7px;
+  border: 1px solid var(--line);
+  border-bottom-color: oklch(0.46 0 0);
+  border-radius: 6px;
+  color: var(--ink);
+  background: var(--surface-2);
+  font-family: ui-monospace, SFMono-Regular, "SF Mono", Consolas, "Liberation Mono", monospace;
+  font-size: 0.76rem;
+  line-height: 1.25;
+  text-align: center;
+  white-space: nowrap;
+}
+
 .spin {
   animation: spin 900ms linear infinite;
 }
@@ -558,6 +644,11 @@ input[type="checkbox"] {
 
   .previewResizeHandle {
     display: none;
+  }
+
+  .shortcutRow {
+    grid-template-columns: 1fr;
+    gap: 6px;
   }
 }
 
