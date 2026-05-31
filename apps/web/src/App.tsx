@@ -139,6 +139,9 @@ export function App() {
   const selectedCrop = activeSource?.crops.find((crop) => crop.id === activeSource.selectedCropId);
   const cropIndex = activeSource && selectedCrop ? activeSource.crops.findIndex((crop) => crop.id === selectedCrop.id) + 1 : 0;
   const selectedSources = sources.filter((source) => source.batchSelected);
+  const previewSource = activeSource;
+  const previewCrop = selectedCrop;
+  const previewCropPointsKey = previewCrop?.points.map((point) => `${point.x},${point.y}`).join("|");
 
   const updateSource = useCallback((sourceId: string, updater: (source: SourceImage) => SourceImage) => {
     setSources((current) => current.map((source) => (source.id === sourceId ? updater(source) : source)));
@@ -408,14 +411,17 @@ export function App() {
   }, []);
 
   useEffect(() => {
-    if (!activeSource || !selectedCrop) {
-      setPreviewUrl(undefined);
+    if (!previewSource || !previewCrop) {
+      setPreviewUrl((current) => {
+        if (current) URL.revokeObjectURL(current);
+        return undefined;
+      });
       return;
     }
     let cancelled = false;
     setPreviewBusy(true);
     const timer = window.setTimeout(() => {
-      renderCropCanvas(activeSource, selectedCrop, 900)
+      renderCropCanvas(previewSource, previewCrop, 900)
         .then((canvas) => {
           if (cancelled) return;
           canvas.toBlob((blob) => {
@@ -435,7 +441,14 @@ export function App() {
       cancelled = true;
       window.clearTimeout(timer);
     };
-  }, [activeSource, selectedCrop]);
+  }, [
+    previewCrop,
+    previewCrop?.trimAmount,
+    previewCrop?.trimEnabled,
+    previewCropPointsKey,
+    previewSource,
+    previewSource?.objectUrl,
+  ]);
 
   useEffect(() => {
     const onKeyDown = (event: KeyboardEvent) => {
