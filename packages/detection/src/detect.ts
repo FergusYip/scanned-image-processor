@@ -375,8 +375,70 @@ function backgroundFraction(mask: Uint8Array, width: number, left: number, top: 
   return total === 0 ? 1 : background / total;
 }
 
+function verticalBackgroundFraction(mask: Uint8Array, width: number, x: number, top: number, bottom: number, radius: number) {
+  return backgroundFraction(mask, width, Math.max(0, x - radius), top, Math.min(width - 1, x + radius), bottom);
+}
+
+function horizontalBackgroundFraction(mask: Uint8Array, width: number, y: number, left: number, right: number, radius: number) {
+  const height = Math.floor(mask.length / width);
+  return backgroundFraction(mask, width, left, Math.max(0, y - radius), right, Math.min(height - 1, y + radius));
+}
+
+function findFirstContentAfterEdgeNoise(
+  low: number,
+  high: number,
+  threshold: number,
+  minBackgroundRun: number,
+  backgroundAt: (value: number) => number,
+) {
+  let backgroundRun = 0;
+  let sawBackgroundRun = low > 0;
+
+  for (let value = low; value <= high; value += 1) {
+    const isBackground = backgroundAt(value) >= threshold;
+    if (isBackground) {
+      backgroundRun += 1;
+      if (backgroundRun >= minBackgroundRun) sawBackgroundRun = true;
+      continue;
+    }
+
+    if (sawBackgroundRun) return value;
+    backgroundRun = 0;
+  }
+
+  return low;
+}
+
+function findLastContentBeforeEdgeNoise(
+  low: number,
+  high: number,
+  limit: number,
+  threshold: number,
+  minBackgroundRun: number,
+  backgroundAt: (value: number) => number,
+) {
+  let backgroundRun = 0;
+  let sawBackgroundRun = high < limit;
+
+  for (let value = high; value >= low; value -= 1) {
+    const isBackground = backgroundAt(value) >= threshold;
+    if (isBackground) {
+      backgroundRun += 1;
+      if (backgroundRun >= minBackgroundRun) sawBackgroundRun = true;
+      continue;
+    }
+
+    if (sawBackgroundRun) return value;
+    backgroundRun = 0;
+  }
+
+  return high;
+}
+
 function refineBoundsFromBackground(component: Component, backgroundMask: Uint8Array, width: number, height: number): Bounds {
   const margin = Math.round(Math.min(width, height) * 0.016);
+  const edgeRadius = Math.max(2, Math.round(Math.min(width, height) * 0.002));
+  const minBackgroundRun = Math.max(4, edgeRadius * 2);
   const roi: Bounds = {
     left: Math.max(0, component.left - margin),
     top: Math.max(0, component.top - margin),
@@ -385,37 +447,18 @@ function refineBoundsFromBackground(component: Component, backgroundMask: Uint8A
   };
 
   const threshold = 0.88;
-  let left = roi.left;
-  for (let x = roi.left; x <= roi.right; x += 1) {
-    if (backgroundFraction(backgroundMask, width, x, roi.top, x, roi.bottom) < threshold) {
-      left = x;
-      break;
-    }
-  }
-
-  let right = roi.right;
-  for (let x = roi.right; x >= roi.left; x -= 1) {
-    if (backgroundFraction(backgroundMask, width, x, roi.top, x, roi.bottom) < threshold) {
-      right = x;
-      break;
-    }
-  }
-
-  let top = roi.top;
-  for (let y = roi.top; y <= roi.bottom; y += 1) {
-    if (backgroundFraction(backgroundMask, width, roi.left, y, roi.right, y) < threshold) {
-      top = y;
-      break;
-    }
-  }
-
-  let bottom = roi.bottom;
-  for (let y = roi.bottom; y >= roi.top; y -= 1) {
-    if (backgroundFraction(backgroundMask, width, roi.left, y, roi.right, y) < threshold) {
-      bottom = y;
-      break;
-    }
-  }
+  const left = findFirstContentAfterEdgeNoise(roi.left, roi.right, threshold, minBackgroundRun, (x) =>
+    verticalBackgroundFraction(backgroundMask, width, x, roi.top, roi.bottom, edgeRadius),
+  );
+  const right = findLastContentBeforeEdgeNoise(roi.left, roi.right, width - 1, threshold, minBackgroundRun, (x) =>
+    verticalBackgroundFraction(backgroundMask, width, x, roi.top, roi.bottom, edgeRadius),
+  );
+  const top = findFirstContentAfterEdgeNoise(roi.top, roi.bottom, threshold, minBackgroundRun, (y) =>
+    horizontalBackgroundFraction(backgroundMask, width, y, roi.left, roi.right, edgeRadius),
+  );
+  const bottom = findLastContentBeforeEdgeNoise(roi.top, roi.bottom, height - 1, threshold, minBackgroundRun, (y) =>
+    horizontalBackgroundFraction(backgroundMask, width, y, roi.left, roi.right, edgeRadius),
+  );
 
   if (right <= left || bottom <= top) {
     return component;
