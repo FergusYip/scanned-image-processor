@@ -34,6 +34,7 @@ import {
 import { renderCropBlob, renderCropCanvas } from "./lib/canvasCrop";
 
 const supportedTypes = new Set(["image/jpeg", "image/png", "image/webp"]);
+const detectionTimeoutMs = 20000;
 
 const initialSettings: AppSettings = {
   minCropAreaPercent: 4,
@@ -144,9 +145,21 @@ export function App() {
     const worker = workerRef.current ?? new Worker(new URL("./workers/detect.worker.ts", import.meta.url), { type: "module" });
     workerRef.current = worker;
 
-    const handleMessage = (event: MessageEvent<{ type: string; result?: DetectionResult; failure?: DetectionFailure }>) => {
+    let timeoutId: number | undefined;
+    let settled = false;
+
+    const finishRun = () => {
+      if (settled) return false;
+      settled = true;
       worker.removeEventListener("message", handleMessage);
+      worker.removeEventListener("error", handleWorkerError);
+      if (timeoutId !== undefined) window.clearTimeout(timeoutId);
       runningRef.current = false;
+      window.setTimeout(runQueue, 0);
+      return true;
+    };
+
+    const handleMessage = (event: MessageEvent<{ type: string; result?: DetectionResult; failure?: DetectionFailure }>) => {
       if (event.data.type === "result" && event.data.result) {
         const { result } = event.data;
         setSources((current) =>
@@ -168,19 +181,32 @@ export function App() {
       } else if (event.data.failure) {
         updateSource(event.data.failure.sourceId, (current) => ({ ...current, status: "error", error: event.data.failure!.message }));
       }
-      window.setTimeout(runQueue, 0);
+      finishRun();
+    };
+
+    const handleWorkerError = (event: ErrorEvent) => {
+      if (!finishRun()) return;
+      worker.terminate();
+      if (workerRef.current === worker) workerRef.current = undefined;
+      updateSource(source.id, (current) => ({ ...current, status: "error", error: event.message || "Detection worker failed." }));
     };
 
     worker.addEventListener("message", handleMessage);
+    worker.addEventListener("error", handleWorkerError);
+    timeoutId = window.setTimeout(() => {
+      if (!finishRun()) return;
+      worker.terminate();
+      if (workerRef.current === worker) workerRef.current = undefined;
+      updateSource(source.id, (current) => ({ ...current, status: "error", error: "Detection timed out." }));
+    }, detectionTimeoutMs);
+
     fetch(source.objectUrl)
       .then((response) => response.blob())
       .then((blob) => createImageBitmap(blob, { imageOrientation: "from-image" }))
       .then((bitmap) => worker.postMessage({ sourceId: source.id, bitmap, minCropAreaPercent: settings.minCropAreaPercent }, [bitmap]))
       .catch((error) => {
-        worker.removeEventListener("message", handleMessage);
-        runningRef.current = false;
+        if (!finishRun()) return;
         updateSource(source.id, (current) => ({ ...current, status: "error", error: error instanceof Error ? error.message : "Could not read image." }));
-        runQueue();
       });
   }, [settings, updateSource]);
 
@@ -287,6 +313,35 @@ export function App() {
     return { fit, width, height, left: pan.x, top: pan.y };
   }, [activeSource, zoom, pan]);
 
+  const setZoomAroundPoint = useCallback(
+    (nextZoom: number, anchor?: Point) => {
+      const clamped = Math.min(6, Math.max(0.2, nextZoom));
+      const stage = stageRef.current?.getBoundingClientRect();
+
+      if (!activeSource || !imageMetrics || !stage) {
+        setZoom(clamped);
+        return;
+      }
+
+      const focus = anchor ?? { x: stage.left + stage.width / 2, y: stage.top + stage.height / 2 };
+      const oldScale = imageMetrics.fit * zoom;
+      const nextScale = imageMetrics.fit * clamped;
+      const oldLeft = stage.left + stage.width / 2 - imageMetrics.width / 2 + pan.x;
+      const oldTop = stage.top + stage.height / 2 - imageMetrics.height / 2 + pan.y;
+      const sourceX = (focus.x - oldLeft) / oldScale;
+      const sourceY = (focus.y - oldTop) / oldScale;
+      const nextWidth = activeSource.originalWidth * nextScale;
+      const nextHeight = activeSource.originalHeight * nextScale;
+
+      setZoom(clamped);
+      setPan({
+        x: focus.x - (stage.left + stage.width / 2 - nextWidth / 2) - sourceX * nextScale,
+        y: focus.y - (stage.top + stage.height / 2 - nextHeight / 2) - sourceY * nextScale,
+      });
+    },
+    [activeSource, imageMetrics, pan.x, pan.y, zoom],
+  );
+
   useEffect(() => {
     setZoom(1);
     setPan({ x: 0, y: 0 });
@@ -326,8 +381,8 @@ export function App() {
   useEffect(() => {
     const onKeyDown = (event: KeyboardEvent) => {
       if (event.target instanceof HTMLInputElement) return;
-      if (event.key === "+") setZoom((current) => Math.min(6, current * 1.15));
-      if (event.key === "-") setZoom((current) => Math.max(0.2, current / 1.15));
+      if (event.key === "+") setZoomAroundPoint(zoom * 1.15);
+      if (event.key === "-") setZoomAroundPoint(zoom / 1.15);
       if (event.key === "0") {
         setZoom(1);
         setPan({ x: 0, y: 0 });
@@ -397,8 +452,8 @@ export function App() {
     if (!activeSource || !selectedCrop || dragHandle === undefined || !imageMetrics) return;
     const rect = event.currentTarget.getBoundingClientRect();
     const scale = imageMetrics.fit * zoom;
-    const x = (event.clientX - rect.left - imageMetrics.left) / scale;
-    const y = (event.clientY - rect.top - imageMetrics.top) / scale;
+    const x = (event.clientX - rect.left) / scale;
+    const y = (event.clientY - rect.top) / scale;
     setCropPoint(selectedCrop.id, dragHandle, { x, y });
   };
 
@@ -439,11 +494,11 @@ export function App() {
           </IconButton>
         </div>
         <div className="toolGroup">
-          <IconButton label="Zoom out" onClick={() => setZoom((current) => Math.max(0.2, current / 1.15))}>
+          <IconButton label="Zoom out" onClick={() => setZoomAroundPoint(zoom / 1.15)}>
             <ZoomOut size={18} />
           </IconButton>
           <div className="cropCounter">{Math.round(zoom * 100)}%</div>
-          <IconButton label="Zoom in" onClick={() => setZoom((current) => Math.min(6, current * 1.15))}>
+          <IconButton label="Zoom in" onClick={() => setZoomAroundPoint(zoom * 1.15)}>
             <ZoomIn size={18} />
           </IconButton>
           <IconButton label="Fit image" onClick={() => { setZoom(1); setPan({ x: 0, y: 0 }); }}>
@@ -496,6 +551,7 @@ export function App() {
             <div
               className="imageLayer"
               style={{ width: imageMetrics.width, height: imageMetrics.height, transform: `translate(${imageMetrics.left}px, ${imageMetrics.top}px)` }}
+              onDragStart={(event) => event.preventDefault()}
               onPointerDown={(event) => {
                 if (event.button !== 0) return;
                 panStartRef.current = { x: event.clientX, y: event.clientY, panX: pan.x, panY: pan.y };
@@ -508,11 +564,11 @@ export function App() {
               }}
               onWheel={(event) => {
                 event.preventDefault();
-                setZoom((current) => Math.min(6, Math.max(0.2, current * (event.deltaY > 0 ? 0.92 : 1.08))));
+                setZoomAroundPoint(zoom * (event.deltaY > 0 ? 0.92 : 1.08), { x: event.clientX, y: event.clientY });
               }}
             >
-              <img draggable={false} src={activeSource.objectUrl} alt={activeSource.fileName} />
-              <svg viewBox={`0 0 ${activeSource.originalWidth} ${activeSource.originalHeight}`} className="overlay">
+              <img draggable={false} src={activeSource.objectUrl} alt={activeSource.fileName} onDragStart={(event) => event.preventDefault()} />
+              <svg viewBox={`0 0 ${activeSource.originalWidth} ${activeSource.originalHeight}`} className="overlay" onDragStart={(event) => event.preventDefault()}>
                 {activeSource.crops.map((crop) => {
                   const selected = crop.id === activeSource.selectedCropId;
                   const points = crop.points.map((point) => `${point.x},${point.y}`).join(" ");
@@ -534,6 +590,7 @@ export function App() {
                           r={Math.max(6 / (imageMetrics.fit * zoom), 2)}
                           onPointerDown={(event) => {
                             event.stopPropagation();
+                            event.currentTarget.setPointerCapture(event.pointerId);
                             setSelectedHandle(index);
                             setDragHandle(index);
                             updateSource(activeSource.id, (source) => ({ ...source, selectedCropId: crop.id }));

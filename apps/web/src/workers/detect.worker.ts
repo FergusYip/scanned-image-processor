@@ -15,18 +15,6 @@ type Component = {
   count: number;
 };
 
-let cvReady = false;
-
-async function warmOpenCv() {
-  if (cvReady) return;
-  try {
-    await import("@techstark/opencv-js");
-    cvReady = true;
-  } catch {
-    cvReady = false;
-  }
-}
-
 function median(values: number[]) {
   const sorted = [...values].sort((a, b) => a - b);
   return sorted[Math.floor(sorted.length / 2)] ?? 255;
@@ -156,14 +144,13 @@ function detect(bitmap: ImageBitmap, minCropAreaPercent: number): DetectionResul
 self.onmessage = async (event: MessageEvent<RequestMessage>) => {
   const { sourceId, bitmap, minCropAreaPercent } = event.data;
   try {
-    await warmOpenCv();
     const quads = detect(bitmap, minCropAreaPercent);
     const result: DetectionResult = {
       sourceId,
       width: bitmap.width,
       height: bitmap.height,
       quads,
-      engine: cvReady ? "opencv" : "canvas",
+      engine: "canvas",
     };
     self.postMessage({ type: "result", result });
   } catch (error) {
