@@ -692,7 +692,7 @@ export function App() {
           )}
         </div>
 
-        {!previewCollapsed && (
+        {activeSource && !previewCollapsed && (
           <aside className="previewPanel" style={{ width: previewWidth }}>
             <button
               className="previewResizeHandle"
