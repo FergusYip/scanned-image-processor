@@ -40,6 +40,7 @@ describe("geometry", () => {
     expect(trimAmountToTolerance(0)).toBe(8);
     expect(trimAmountToTolerance(100)).toBe(50);
     expect(trimAmountToTolerance(200)).toBe(92);
-    expect(trimAmountToTolerance(300)).toBe(92);
+    expect(trimAmountToTolerance(300)).toBe(134);
+    expect(trimAmountToTolerance(400)).toBe(134);
   });
 });

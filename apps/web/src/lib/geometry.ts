@@ -130,6 +130,6 @@ export function cropOutputSize(quad: Quad): { width: number; height: number } {
 }
 
 export function trimAmountToTolerance(amount: number): number {
-  const clamped = Math.min(200, Math.max(0, amount));
+  const clamped = Math.min(300, Math.max(0, amount));
   return Math.round(8 + clamped * 0.42);
 }

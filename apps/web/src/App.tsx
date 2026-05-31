@@ -44,7 +44,7 @@ const viewfinderMagnification = 4;
 const initialSettings: AppSettings = {
   minCropAreaPercent: 4,
   trimEnabledDefault: true,
-  trimAmountDefault: 45,
+  trimAmountDefault: 300,
   jpegQuality: 92,
 };
 
@@ -850,7 +850,7 @@ export function App() {
               </label>
               <label>
                 Trim amount
-                <input type="range" min="0" max="200" disabled={!selectedCrop} value={selectedCrop?.trimAmount ?? settings.trimAmountDefault} onChange={(event) => updateSelectedCrop((crop) => ({ ...crop, trimAmount: Number(event.target.value) }))} />
+                <input type="range" min="0" max="300" disabled={!selectedCrop} value={selectedCrop?.trimAmount ?? settings.trimAmountDefault} onChange={(event) => updateSelectedCrop((crop) => ({ ...crop, trimAmount: Number(event.target.value) }))} />
               </label>
               <div className="metaGrid">
                 <span>Status</span><strong>{selectedCrop?.edited ? "Edited" : selectedCrop ? "Detected" : "None"}</strong>
