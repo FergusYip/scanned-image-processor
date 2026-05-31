@@ -13,6 +13,8 @@
   --ink: oklch(0.94 0.006 260);
   --accent: oklch(0.62 0.14 260);
   --accent-strong: oklch(0.72 0.16 260);
+  --selected: oklch(0.73 0.13 230);
+  --selected-strong: oklch(0.82 0.12 230);
   --danger: oklch(0.68 0.18 26);
   --warning: oklch(0.78 0.15 82);
 }
@@ -243,8 +245,8 @@ input[type="checkbox"] {
 }
 
 .cropShape.selected polygon {
-  fill: oklch(0.78 0.15 82 / 0.14);
-  stroke: var(--warning);
+  fill: oklch(0.73 0.13 230 / 0.18);
+  stroke: var(--selected-strong);
 }
 
 .handle {
@@ -256,7 +258,7 @@ input[type="checkbox"] {
 }
 
 .handle.active {
-  fill: var(--warning);
+  fill: var(--selected-strong);
   stroke: oklch(0.1 0 0);
 }
 
@@ -300,7 +302,7 @@ input[type="checkbox"] {
   top: 50%;
   width: 11px;
   height: 11px;
-  border: 2px solid var(--warning);
+  border: 2px solid var(--selected-strong);
   border-radius: 50%;
   transform: translate(-50%, -50%);
   box-shadow: 0 0 0 1px oklch(0.08 0 0 / 0.72);
@@ -442,7 +444,8 @@ input[type="checkbox"] {
 }
 
 .sourceTile[data-active="true"] {
-  border-color: var(--accent-strong);
+  border-color: var(--selected-strong);
+  background: oklch(0.73 0.13 230 / 0.1);
 }
 
 .thumbButton {
