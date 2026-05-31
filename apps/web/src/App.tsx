@@ -43,8 +43,6 @@ const viewfinderMagnification = 4;
 
 const initialSettings: AppSettings = {
   minCropAreaPercent: 4,
-  trimEnabledDefault: true,
-  trimAmountDefault: 300,
   jpegQuality: 92,
 };
 
@@ -94,15 +92,13 @@ function IconButton({
   );
 }
 
-function createCrop(sourceId: string, points: Quad, settings: AppSettings): CropRegion {
+function createCrop(sourceId: string, points: Quad): CropRegion {
   return {
     id: id("crop"),
     sourceId,
     points: cloneQuad(points),
     autoPoints: cloneQuad(points),
     edited: false,
-    trimEnabled: settings.trimEnabledDefault,
-    trimAmount: settings.trimAmountDefault,
   };
 }
 
@@ -196,7 +192,7 @@ export function App() {
         setSources((current) =>
           current.map((item) => {
             if (item.id !== result.sourceId) return item;
-            const crops = result.quads.filter(isValidQuad).map((quad) => createCrop(item.id, quad, settings));
+            const crops = result.quads.filter(isValidQuad).map((quad) => createCrop(item.id, quad));
             return {
               ...item,
               originalWidth: result.width,
@@ -265,7 +261,7 @@ export function App() {
 
   const addManualCrop = () => {
     if (!activeSource) return;
-    const crop = createCrop(activeSource.id, defaultQuad(activeSource.originalWidth, activeSource.originalHeight), settings);
+    const crop = createCrop(activeSource.id, defaultQuad(activeSource.originalWidth, activeSource.originalHeight));
     updateSource(activeSource.id, (source) => ({ ...source, status: "ready", crops: [...source.crops, crop], selectedCropId: crop.id }));
   };
 
@@ -471,8 +467,6 @@ export function App() {
     };
   }, [
     previewCrop,
-    previewCrop?.trimAmount,
-    previewCrop?.trimEnabled,
     previewCropPointsKey,
     previewSource,
     previewSource?.objectUrl,
@@ -646,6 +640,9 @@ export function App() {
           <IconButton label="Re-detect source" onClick={redetect} disabled={!activeSource || activeSource.status === "processing"}>
             <RefreshCcw size={18} />
           </IconButton>
+        </div>
+        <div className="sourceTitle" title={activeSource?.fileName ?? "No source selected"}>
+          {activeSource?.fileName ?? "No source selected"}
         </div>
         <div className="toolGroup">
           <IconButton label="Previous crop" onClick={() => selectCropOffset(-1)} disabled={!activeSource?.crops.length}>
@@ -843,14 +840,6 @@ export function App() {
               {previewUrl ? <img src={previewUrl} alt="Selected crop preview" /> : <span>No crop selected</span>}
             </div>
             <div className="settingsStack">
-              <label className="toggleRow">
-                <input type="checkbox" checked={selectedCrop?.trimEnabled ?? settings.trimEnabledDefault} disabled={!selectedCrop} onChange={(event) => updateSelectedCrop((crop) => ({ ...crop, trimEnabled: event.target.checked }))} />
-                Trim border
-              </label>
-              <label>
-                Trim amount
-                <input type="range" min="0" max="300" disabled={!selectedCrop} value={selectedCrop?.trimAmount ?? settings.trimAmountDefault} onChange={(event) => updateSelectedCrop((crop) => ({ ...crop, trimAmount: Number(event.target.value) }))} />
-              </label>
               <div className="metaGrid">
                 <span>Status</span><strong>{selectedCrop?.edited ? "Edited" : selectedCrop ? "Detected" : "None"}</strong>
                 <span>Output</span><strong>{selectedCrop ? `${cropOutputSize(selectedCrop.points).width} x ${cropOutputSize(selectedCrop.points).height}` : "-"}</strong>

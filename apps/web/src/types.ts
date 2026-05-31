@@ -13,8 +13,6 @@ export type CropRegion = {
   points: Quad;
   autoPoints: Quad;
   edited: boolean;
-  trimEnabled: boolean;
-  trimAmount?: number;
 };
 
 export type SourceImage = {
@@ -35,8 +33,6 @@ export type SourceImage = {
 
 export type AppSettings = {
   minCropAreaPercent: number;
-  trimEnabledDefault: boolean;
-  trimAmountDefault: number;
   jpegQuality: number;
 };
 

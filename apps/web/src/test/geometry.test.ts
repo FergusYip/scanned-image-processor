@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { cropOutputSize, defaultQuad, isValidQuad, moveQuadPoint, nudgeQuadPoint, trimAmountToTolerance } from "../lib/geometry";
+import { cropOutputSize, defaultQuad, isValidQuad, moveQuadPoint, nudgeQuadPoint } from "../lib/geometry";
 import type { Quad } from "../types";
 
 describe("geometry", () => {
@@ -34,13 +34,5 @@ describe("geometry", () => {
     ]);
     expect(size.width).toBeGreaterThanOrEqual(90);
     expect(size.height).toBeGreaterThanOrEqual(70);
-  });
-
-  it("maps trim slider values to bounded tolerances", () => {
-    expect(trimAmountToTolerance(0)).toBe(8);
-    expect(trimAmountToTolerance(100)).toBe(50);
-    expect(trimAmountToTolerance(200)).toBe(92);
-    expect(trimAmountToTolerance(300)).toBe(134);
-    expect(trimAmountToTolerance(400)).toBe(134);
   });
 });

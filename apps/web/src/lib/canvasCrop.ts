@@ -1,5 +1,5 @@
 import type { CropRegion, Quad, SourceImage } from "../types";
-import { cropOutputSize, quadBounds, trimAmountToTolerance } from "./geometry";
+import { cropOutputSize, quadBounds } from "./geometry";
 
 type Matrix3 = [number, number, number, number, number, number, number, number, number];
 
@@ -78,61 +78,6 @@ function sampleBilinear(data: Uint8ClampedArray, width: number, height: number, 
   });
 }
 
-function trimCanvas(canvas: HTMLCanvasElement, amount: number): HTMLCanvasElement {
-  const context = canvas.getContext("2d", { willReadFrequently: true });
-  if (!context) return canvas;
-
-  const image = context.getImageData(0, 0, canvas.width, canvas.height);
-  const tolerance = trimAmountToTolerance(amount);
-  const corners = [
-    0,
-    (canvas.width - 1) * 4,
-    ((canvas.height - 1) * canvas.width) * 4,
-    ((canvas.height - 1) * canvas.width + canvas.width - 1) * 4,
-  ];
-  const bg = [0, 1, 2].map((channel) =>
-    corners.reduce((sum, offset) => sum + image.data[offset + channel], 0) / corners.length,
-  );
-
-  const isBackground = (x: number, y: number) => {
-    const offset = (y * canvas.width + x) * 4;
-    return [0, 1, 2].every((channel) => Math.abs(image.data[offset + channel] - bg[channel]) <= tolerance);
-  };
-
-  const limitX = Math.min(Math.round(canvas.width * 0.05), 80);
-  const limitY = Math.min(Math.round(canvas.height * 0.05), 80);
-  let left = 0;
-  let right = canvas.width - 1;
-  let top = 0;
-  let bottom = canvas.height - 1;
-
-  while (left < limitX && averageColumn(left) > 0.82) left += 1;
-  while (canvas.width - 1 - right < limitX && averageColumn(right) > 0.82) right -= 1;
-  while (top < limitY && averageRow(top) > 0.82) top += 1;
-  while (canvas.height - 1 - bottom < limitY && averageRow(bottom) > 0.82) bottom -= 1;
-
-  function averageColumn(x: number) {
-    let count = 0;
-    for (let y = 0; y < canvas.height; y += 1) if (isBackground(x, y)) count += 1;
-    return count / canvas.height;
-  }
-
-  function averageRow(y: number) {
-    let count = 0;
-    for (let x = 0; x < canvas.width; x += 1) if (isBackground(x, y)) count += 1;
-    return count / canvas.width;
-  }
-
-  if (right <= left || bottom <= top) return canvas;
-  if (left === 0 && top === 0 && right === canvas.width - 1 && bottom === canvas.height - 1) return canvas;
-
-  const trimmed = document.createElement("canvas");
-  trimmed.width = right - left + 1;
-  trimmed.height = bottom - top + 1;
-  trimmed.getContext("2d")?.drawImage(canvas, left, top, trimmed.width, trimmed.height, 0, 0, trimmed.width, trimmed.height);
-  return trimmed;
-}
-
 export async function renderCropCanvas(
   source: SourceImage,
   crop: CropRegion,
@@ -188,7 +133,7 @@ export async function renderCropCanvas(
   }
 
   context.putImageData(target, 0, 0);
-  return crop.trimEnabled ? trimCanvas(canvas, crop.trimAmount ?? 50) : canvas;
+  return canvas;
 }
 
 export async function renderCropBlob(source: SourceImage, crop: CropRegion, quality: number): Promise<Blob> {

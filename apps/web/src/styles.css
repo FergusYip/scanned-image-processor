@@ -84,6 +84,17 @@ input:focus-visible {
   padding-right: 0;
 }
 
+.sourceTitle {
+  min-width: 0;
+  max-width: min(32vw, 420px);
+  overflow: hidden;
+  color: var(--ink);
+  font-size: 14px;
+  font-weight: 650;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 .iconButton,
 .textButton {
   display: inline-flex;
