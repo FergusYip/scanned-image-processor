@@ -260,6 +260,65 @@ input[type="checkbox"] {
   stroke: oklch(0.1 0 0);
 }
 
+.cropViewfinder {
+  position: absolute;
+  z-index: 12;
+  border: 1px solid oklch(0.9 0.02 260 / 0.88);
+  border-radius: 8px;
+  background-color: oklch(0.12 0 0);
+  background-repeat: no-repeat;
+  box-shadow: 0 2px 8px oklch(0 0 0 / 0.34);
+  pointer-events: none;
+  overflow: hidden;
+}
+
+.cropViewfinder::before,
+.cropViewfinder::after {
+  content: "";
+  position: absolute;
+  background: oklch(0.94 0.006 260 / 0.72);
+  pointer-events: none;
+}
+
+.cropViewfinder::before {
+  left: 50%;
+  top: 0;
+  width: 1px;
+  height: 100%;
+}
+
+.cropViewfinder::after {
+  left: 0;
+  top: 50%;
+  width: 100%;
+  height: 1px;
+}
+
+.cropViewfinderCrosshair {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  width: 11px;
+  height: 11px;
+  border: 2px solid var(--warning);
+  border-radius: 50%;
+  transform: translate(-50%, -50%);
+  box-shadow: 0 0 0 1px oklch(0.08 0 0 / 0.72);
+}
+
+.cropViewfinderReadout {
+  position: absolute;
+  right: 6px;
+  bottom: 6px;
+  padding: 2px 5px;
+  border-radius: 5px;
+  color: var(--ink);
+  background: oklch(0.1 0 0 / 0.72);
+  font-size: 0.68rem;
+  font-variant-numeric: tabular-nums;
+  line-height: 1.2;
+}
+
 .processingVeil {
   position: absolute;
   inset: 0;

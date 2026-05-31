@@ -37,6 +37,8 @@ import { renderCropBlob, renderCropCanvas } from "./lib/canvasCrop";
 const supportedTypes = new Set(["image/jpeg", "image/png", "image/webp"]);
 const detectionTimeoutMs = 20000;
 const previewMinWidth = 260;
+const viewfinderSize = 132;
+const viewfinderMagnification = 2.5;
 
 const initialSettings: AppSettings = {
   minCropAreaPercent: 4,
@@ -120,6 +122,7 @@ export function App() {
   const [previewWidth, setPreviewWidth] = useState(defaultPreviewWidth);
   const [notice, setNotice] = useState<string>();
   const [stageSize, setStageSize] = useState({ width: 900, height: 620 });
+  const [viewfinder, setViewfinder] = useState<{ stageX: number; stageY: number; sourceX: number; sourceY: number }>();
   const fileInputRef = useRef<HTMLInputElement>(null);
   const stageRef = useRef<HTMLDivElement>(null);
   const workerRef = useRef<Worker | undefined>(undefined);
@@ -508,11 +511,18 @@ export function App() {
   };
 
   const onOverlayPointerMove = (event: React.PointerEvent<HTMLDivElement>) => {
-    if (!activeSource || !selectedCrop || dragHandle === undefined || !imageMetrics) return;
+    if (!activeSource || !selectedCrop || dragHandle === undefined || !imageMetrics || !stageRef.current) return;
     const rect = event.currentTarget.getBoundingClientRect();
+    const stageRect = stageRef.current.getBoundingClientRect();
     const scale = imageMetrics.fit * zoom;
     const x = (event.clientX - rect.left) / scale;
     const y = (event.clientY - rect.top) / scale;
+    setViewfinder({
+      stageX: event.clientX - stageRect.left,
+      stageY: event.clientY - stageRect.top,
+      sourceX: x,
+      sourceY: y,
+    });
     setCropPoint(selectedCrop.id, dragHandle, { x, y });
   };
 
@@ -648,6 +658,11 @@ export function App() {
               onPointerMove={onOverlayPointerMove}
               onPointerUp={() => {
                 setDragHandle(undefined);
+                setViewfinder(undefined);
+              }}
+              onPointerCancel={() => {
+                setDragHandle(undefined);
+                setViewfinder(undefined);
               }}
             >
               <img draggable={false} src={activeSource.objectUrl} alt={activeSource.fileName} onDragStart={(event) => event.preventDefault()} />
@@ -688,6 +703,24 @@ export function App() {
               {activeSource.status === "processing" && <div className="processingVeil"><Loader2 size={22} />Processing</div>}
               {activeSource.status === "no-crops" && <div className="processingVeil">No crops</div>}
               {activeSource.status === "error" && <div className="processingVeil error">{activeSource.error}</div>}
+            </div>
+          )}
+          {activeSource && imageMetrics && viewfinder && dragHandle !== undefined && (
+            <div
+              className="cropViewfinder"
+              aria-hidden="true"
+              style={{
+                width: viewfinderSize,
+                height: viewfinderSize,
+                left: Math.max(18, Math.min(stageSize.width - viewfinderSize - 18, viewfinder.stageX + 24)),
+                top: Math.max(18, Math.min(stageSize.height - viewfinderSize - 18, viewfinder.stageY - viewfinderSize - 24)),
+                backgroundImage: `url(${activeSource.objectUrl})`,
+                backgroundSize: `${activeSource.originalWidth * imageMetrics.fit * zoom * viewfinderMagnification}px ${activeSource.originalHeight * imageMetrics.fit * zoom * viewfinderMagnification}px`,
+                backgroundPosition: `${viewfinderSize / 2 - viewfinder.sourceX * imageMetrics.fit * zoom * viewfinderMagnification}px ${viewfinderSize / 2 - viewfinder.sourceY * imageMetrics.fit * zoom * viewfinderMagnification}px`,
+              }}
+            >
+              <span className="cropViewfinderCrosshair" />
+              <span className="cropViewfinderReadout">{`${Math.round(viewfinder.sourceX)}, ${Math.round(viewfinder.sourceY)}`}</span>
             </div>
           )}
         </div>
