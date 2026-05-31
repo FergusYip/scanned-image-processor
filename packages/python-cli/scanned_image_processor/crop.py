@@ -35,9 +35,17 @@ def _four_point_transform(image: np.ndarray, pts: np.ndarray) -> np.ndarray:
 
 def _contour_to_quad(contour: np.ndarray) -> np.ndarray:
     peri = cv2.arcLength(contour, True)
-    approx = cv2.approxPolyDP(contour, 0.02 * peri, True)
-    if len(approx) == 4:
-        return approx.reshape(4, 2).astype(np.float32)
+    contour_area = max(cv2.contourArea(contour), 1.0)
+    fallback_area = max(cv2.contourArea(cv2.boxPoints(cv2.minAreaRect(contour))), 1.0)
+
+    for ratio in (0.006, 0.01, 0.014, 0.02, 0.028, 0.04, 0.055, 0.075):
+        approx = cv2.approxPolyDP(contour, ratio * peri, True)
+        if len(approx) != 4:
+            continue
+        approx_area = cv2.contourArea(approx)
+        if approx_area >= contour_area * 0.82 and approx_area >= fallback_area * 0.55:
+            return approx.reshape(4, 2).astype(np.float32)
+
     box = cv2.boxPoints(cv2.minAreaRect(contour))
     return box.astype(np.float32)
 

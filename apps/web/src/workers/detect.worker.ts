@@ -81,6 +81,64 @@ function cross(origin: Point, a: Point, b: Point) {
   return (a.x - origin.x) * (b.y - origin.y) - (a.y - origin.y) * (b.x - origin.x);
 }
 
+function distance(a: Point, b: Point) {
+  return Math.hypot(a.x - b.x, a.y - b.y);
+}
+
+function polygonArea(points: Point[]) {
+  return Math.abs(
+    points.reduce((area, point, index) => {
+      const next = points[(index + 1) % points.length];
+      return area + point.x * next.y - next.x * point.y;
+    }, 0) / 2,
+  );
+}
+
+function polygonPerimeter(points: Point[]) {
+  return points.reduce((sum, point, index) => sum + distance(point, points[(index + 1) % points.length]), 0);
+}
+
+function lineDistance(point: Point, start: Point, end: Point) {
+  const length = distance(start, end);
+  if (length === 0) return distance(point, start);
+  return Math.abs((end.y - start.y) * point.x - (end.x - start.x) * point.y + end.x * start.y - end.y * start.x) / length;
+}
+
+function simplifyLine(points: Point[], epsilon: number): Point[] {
+  if (points.length <= 2) return points;
+
+  let maxDistance = 0;
+  let splitIndex = 0;
+  const first = points[0];
+  const last = points[points.length - 1];
+
+  for (let index = 1; index < points.length - 1; index += 1) {
+    const currentDistance = lineDistance(points[index], first, last);
+    if (currentDistance > maxDistance) {
+      maxDistance = currentDistance;
+      splitIndex = index;
+    }
+  }
+
+  if (maxDistance <= epsilon) return [first, last];
+
+  const left = simplifyLine(points.slice(0, splitIndex + 1), epsilon);
+  const right = simplifyLine(points.slice(splitIndex), epsilon);
+  return left.slice(0, -1).concat(right);
+}
+
+function simplifyClosedHull(hull: Point[], epsilon: number) {
+  if (hull.length <= 4) return hull;
+  const center = {
+    x: hull.reduce((sum, point) => sum + point.x, 0) / hull.length,
+    y: hull.reduce((sum, point) => sum + point.y, 0) / hull.length,
+  };
+  const start = hull.reduce((best, point, index) => (distance(point, center) > distance(hull[best], center) ? index : best), 0);
+  const rotated = hull.slice(start).concat(hull.slice(0, start), hull[start]);
+  const simplified = simplifyLine(rotated, epsilon);
+  return simplified.slice(0, -1);
+}
+
 function convexHull(points: Point[]) {
   const sorted = [...points].sort((a, b) => a.x - b.x || a.y - b.y);
   if (sorted.length <= 1) return sorted;
@@ -101,6 +159,28 @@ function convexHull(points: Point[]) {
   lower.pop();
   upper.pop();
   return lower.concat(upper);
+}
+
+function contourQuad(points: Point[], fallback: Quad): Quad | undefined {
+  const hull = convexHull(points);
+  if (hull.length < 4) return undefined;
+
+  const hullArea = polygonArea(hull);
+  const fallbackArea = polygonArea(fallback);
+  const perimeter = polygonPerimeter(hull);
+  if (hullArea <= 0 || perimeter <= 0) return undefined;
+
+  for (const ratio of [0.006, 0.01, 0.014, 0.02, 0.028, 0.04, 0.055, 0.075]) {
+    const simplified = simplifyClosedHull(hull, perimeter * ratio);
+    if (simplified.length !== 4) continue;
+
+    const area = polygonArea(simplified);
+    if (area >= hullArea * 0.82 && area >= fallbackArea * 0.55) {
+      return orderQuad(simplified);
+    }
+  }
+
+  return undefined;
 }
 
 function orderQuad(points: Point[]): Quad {
@@ -256,7 +336,7 @@ function detect(bitmap: ImageBitmap, minCropAreaPercent: number): DetectionResul
   return components.map((component): Quad => {
     const pad = Math.round(Math.min(width, height) * 0.004);
     const fallback = orderedQuadFromRect(component.left, component.top, component.right, component.bottom);
-    const quad = component.boundary.length >= 4 ? minAreaQuad(component.boundary, fallback) : fallback;
+    const quad = component.boundary.length >= 4 ? (contourQuad(component.boundary, fallback) ?? minAreaQuad(component.boundary, fallback)) : fallback;
     return padQuad(
       quad.map((point) => ({ x: point.x / scale, y: point.y / scale })) as Quad,
       pad / scale,
