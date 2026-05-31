@@ -341,7 +341,7 @@ export function App() {
 
   const setZoomAroundPoint = useCallback(
     (nextZoom: number, anchor?: Point, immediate = false) => {
-      const clamped = Math.min(6, Math.max(0.2, nextZoom));
+      const clamped = Math.min(6, Math.max(1, nextZoom));
       const stage = stageRef.current?.getBoundingClientRect();
 
       if (!activeSource || !imageMetrics || !stage) {
