@@ -13,6 +13,12 @@ type Component = {
   right: number;
   bottom: number;
   count: number;
+  boundary: Point[];
+};
+
+type Point = {
+  x: number;
+  y: number;
 };
 
 function median(values: number[]) {
@@ -66,6 +72,121 @@ function buildMask(data: Uint8ClampedArray, width: number, height: number, bg: n
   return mask;
 }
 
+function isBoundaryPixel(mask: Uint8Array, width: number, height: number, x: number, y: number) {
+  if (x === 0 || y === 0 || x === width - 1 || y === height - 1) return true;
+  return !mask[y * width + x - 1] || !mask[y * width + x + 1] || !mask[(y - 1) * width + x] || !mask[(y + 1) * width + x];
+}
+
+function cross(origin: Point, a: Point, b: Point) {
+  return (a.x - origin.x) * (b.y - origin.y) - (a.y - origin.y) * (b.x - origin.x);
+}
+
+function convexHull(points: Point[]) {
+  const sorted = [...points].sort((a, b) => a.x - b.x || a.y - b.y);
+  if (sorted.length <= 1) return sorted;
+
+  const lower: Point[] = [];
+  for (const point of sorted) {
+    while (lower.length >= 2 && cross(lower[lower.length - 2], lower[lower.length - 1], point) <= 0) lower.pop();
+    lower.push(point);
+  }
+
+  const upper: Point[] = [];
+  for (let index = sorted.length - 1; index >= 0; index -= 1) {
+    const point = sorted[index];
+    while (upper.length >= 2 && cross(upper[upper.length - 2], upper[upper.length - 1], point) <= 0) upper.pop();
+    upper.push(point);
+  }
+
+  lower.pop();
+  upper.pop();
+  return lower.concat(upper);
+}
+
+function orderQuad(points: Point[]): Quad {
+  const center = {
+    x: points.reduce((sum, point) => sum + point.x, 0) / points.length,
+    y: points.reduce((sum, point) => sum + point.y, 0) / points.length,
+  };
+  const sorted = [...points].sort((a, b) => Math.atan2(a.y - center.y, a.x - center.x) - Math.atan2(b.y - center.y, b.x - center.x));
+  const start = sorted.reduce((best, point, index) => (point.x + point.y < sorted[best].x + sorted[best].y ? index : best), 0);
+  return [sorted[start], sorted[(start + 1) % 4], sorted[(start + 2) % 4], sorted[(start + 3) % 4]];
+}
+
+function minAreaQuad(points: Point[], fallback: Quad): Quad {
+  const hull = convexHull(points);
+  if (hull.length < 4) return fallback;
+
+  let best:
+    | {
+        area: number;
+        corners: Point[];
+      }
+    | undefined;
+  const seenAngles = new Set<number>();
+
+  for (let index = 0; index < hull.length; index += 1) {
+    const current = hull[index];
+    const next = hull[(index + 1) % hull.length];
+    const edgeAngle = Math.atan2(next.y - current.y, next.x - current.x);
+    const angle = ((edgeAngle % (Math.PI / 2)) + Math.PI / 2) % (Math.PI / 2);
+    const key = Math.round(angle * 100000);
+    if (seenAngles.has(key)) continue;
+    seenAngles.add(key);
+
+    const cos = Math.cos(-angle);
+    const sin = Math.sin(-angle);
+    let minX = Infinity;
+    let maxX = -Infinity;
+    let minY = Infinity;
+    let maxY = -Infinity;
+
+    for (const point of hull) {
+      const x = point.x * cos - point.y * sin;
+      const y = point.x * sin + point.y * cos;
+      minX = Math.min(minX, x);
+      maxX = Math.max(maxX, x);
+      minY = Math.min(minY, y);
+      maxY = Math.max(maxY, y);
+    }
+
+    const area = (maxX - minX) * (maxY - minY);
+    if (!best || area < best.area) {
+      const restoreCos = Math.cos(angle);
+      const restoreSin = Math.sin(angle);
+      const rotated = [
+        { x: minX, y: minY },
+        { x: maxX, y: minY },
+        { x: maxX, y: maxY },
+        { x: minX, y: maxY },
+      ];
+      best = {
+        area,
+        corners: rotated.map((point) => ({
+          x: point.x * restoreCos - point.y * restoreSin,
+          y: point.x * restoreSin + point.y * restoreCos,
+        })),
+      };
+    }
+  }
+
+  return best ? orderQuad(best.corners) : fallback;
+}
+
+function padQuad(quad: Quad, pad: number, width: number, height: number): Quad {
+  const center = {
+    x: quad.reduce((sum, point) => sum + point.x, 0) / quad.length,
+    y: quad.reduce((sum, point) => sum + point.y, 0) / quad.length,
+  };
+  return quad.map((point) => {
+    const length = Math.hypot(point.x - center.x, point.y - center.y) || 1;
+    return {
+      x: Math.min(width - 1, Math.max(0, point.x + ((point.x - center.x) / length) * pad)),
+      y: Math.min(height - 1, Math.max(0, point.y + ((point.y - center.y) / length) * pad)),
+    };
+  }) as Quad;
+}
+
 function findComponents(mask: Uint8Array, width: number, height: number, minArea: number) {
   const seen = new Uint8Array(mask.length);
   const components: Component[] = [];
@@ -82,6 +203,7 @@ function findComponents(mask: Uint8Array, width: number, height: number, minArea
     let right = 0;
     let bottom = 0;
     let count = 0;
+    const boundary: Point[] = [];
 
     while (cursor < queue.length) {
       const next = queue[cursor];
@@ -93,6 +215,7 @@ function findComponents(mask: Uint8Array, width: number, height: number, minArea
       right = Math.max(right, x);
       bottom = Math.max(bottom, y);
       count += 1;
+      if (isBoundaryPixel(mask, width, height, x, y)) boundary.push({ x, y });
 
       const neighbors = [next - 1, next + 1, next - width, next + width];
       for (const neighbor of neighbors) {
@@ -106,7 +229,7 @@ function findComponents(mask: Uint8Array, width: number, height: number, minArea
 
     const boxArea = (right - left + 1) * (bottom - top + 1);
     if (count >= minArea && boxArea >= minArea && count / boxArea > 0.18) {
-      components.push({ left, top, right, bottom, count });
+      components.push({ left, top, right, bottom, count, boundary });
     }
   }
 
@@ -132,11 +255,13 @@ function detect(bitmap: ImageBitmap, minCropAreaPercent: number): DetectionResul
   const components = findComponents(mask, width, height, minArea);
   return components.map((component): Quad => {
     const pad = Math.round(Math.min(width, height) * 0.004);
-    return orderedQuadFromRect(
-      Math.max(0, (component.left - pad) / scale),
-      Math.max(0, (component.top - pad) / scale),
-      Math.min(bitmap.width - 1, (component.right + pad) / scale),
-      Math.min(bitmap.height - 1, (component.bottom + pad) / scale),
+    const fallback = orderedQuadFromRect(component.left, component.top, component.right, component.bottom);
+    const quad = component.boundary.length >= 4 ? minAreaQuad(component.boundary, fallback) : fallback;
+    return padQuad(
+      quad.map((point) => ({ x: point.x / scale, y: point.y / scale })) as Quad,
+      pad / scale,
+      bitmap.width,
+      bitmap.height,
     );
   });
 }
