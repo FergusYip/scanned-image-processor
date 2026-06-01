@@ -34,7 +34,7 @@ import {
   nudgeQuadPoint,
 } from "./lib/geometry";
 import { renderCropBlob } from "./lib/canvasCrop";
-import { deleteSource as deletePersistedSource, loadPersistedState, saveSettings, saveSource, saveSourceJson } from "./lib/persistence";
+import { deleteSource as deletePersistedSource, loadPersistedState, saveSettings, saveSourceBlob, saveSourceJson } from "./lib/persistence";
 
 const supportedTypes = new Set(["image/jpeg", "image/png", "image/webp"]);
 const detectionTimeoutMs = 20000;
@@ -354,7 +354,7 @@ export function App() {
       setSources((current) => [...current, ...created]);
       setActiveSourceId((current) => current ?? created[0].id);
       created.forEach((source) => {
-        saveSource(source).catch((error) => {
+        saveSourceBlob(source).catch((error) => {
           setNotice(error instanceof Error ? `Could not save ${source.fileName}: ${error.message}` : `Could not save ${source.fileName}.`);
         });
       });
