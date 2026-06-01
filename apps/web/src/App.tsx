@@ -23,7 +23,7 @@ import {
   ZoomOut,
 } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import type { AppSettings, CropRegion, DetectionFailure, DetectionResult, Point, Quad, SourceImage } from "./types";
+import type { CropRegion, DetectionFailure, DetectionResult, Point, Quad, SourceImage } from "./types";
 import { cropFileName, uniqueZipName } from "./lib/filenames";
 import {
   cloneQuad,
@@ -34,18 +34,13 @@ import {
   nudgeQuadPoint,
 } from "./lib/geometry";
 import { renderCropBlob } from "./lib/canvasCrop";
-import { deleteSource as deletePersistedSource, loadPersistedState, saveSettings, saveSourceBlob, saveSourceJson } from "./lib/persistence";
+import { usePersistedSession } from "./lib/sessionStore";
 
 const supportedTypes = new Set(["image/jpeg", "image/png", "image/webp"]);
 const detectionTimeoutMs = 20000;
 const previewMinWidth = 260;
 const viewfinderSize = 172;
 const viewfinderMagnification = 6;
-
-const initialSettings: AppSettings = {
-  minCropAreaPercent: 4,
-  jpegQuality: 92,
-};
 
 const keyboardHelp = [
   { keys: ["Delete", "Backspace"], label: "Delete selected crop" },
@@ -125,9 +120,7 @@ async function sourceFromFile(file: File): Promise<SourceImage> {
 }
 
 export function App() {
-  const [sources, setSources] = useState<SourceImage[]>([]);
   const [activeSourceId, setActiveSourceId] = useState<string>();
-  const [settings, setSettings] = useState(initialSettings);
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [helpOpen, setHelpOpen] = useState(false);
   const [previewCollapsed, setPreviewCollapsed] = useState(false);
@@ -154,7 +147,11 @@ export function App() {
   const panRef = useRef({ x: 0, y: 0 });
   const viewportFrameRef = useRef<number | undefined>(undefined);
   const pendingViewportRef = useRef<{ zoom: number; pan: Point } | undefined>(undefined);
-  const hydratedRef = useRef(false);
+  const reportPersistenceError = useCallback((error: unknown, fallbackMessage: string) => {
+    setNotice(error instanceof Error ? `${fallbackMessage} ${error.message}` : fallbackMessage);
+  }, []);
+  const { session, loadError, updateSettings, addSources: persistSources, updateSource, removeSource } = usePersistedSession(reportPersistenceError);
+  const { settings, sources } = session;
 
   const activeSource = sources.find((source) => source.id === activeSourceId);
   const selectedCrop = activeSource?.crops.find((crop) => crop.id === activeSource.selectedCropId);
@@ -164,46 +161,17 @@ export function App() {
   const previewCrop = selectedCrop;
   const previewCropPointsKey = previewCrop?.points.map((point) => `${point.x},${point.y}`).join("|");
 
-  const updateSource = useCallback((sourceId: string, updater: (source: SourceImage) => SourceImage) => {
-    setSources((current) => current.map((source) => (source.id === sourceId ? updater(source) : source)));
-  }, []);
+  useEffect(() => {
+    if (!loadError) return;
+    setNotice(loadError instanceof Error ? `Could not load saved session: ${loadError.message}` : "Could not load saved session.");
+  }, [loadError]);
 
   useEffect(() => {
-    let cancelled = false;
-    loadPersistedState()
-      .then((persisted) => {
-        if (cancelled) return;
-        if (persisted.settings) setSettings(persisted.settings);
-        if (persisted.sources.length > 0) {
-          setSources(persisted.sources);
-          setActiveSourceId(persisted.sources[0].id);
-        }
-      })
-      .catch((error) => {
-        setNotice(error instanceof Error ? `Could not load saved session: ${error.message}` : "Could not load saved session.");
-      })
-      .finally(() => {
-        if (!cancelled) hydratedRef.current = true;
-      });
-    return () => {
-      cancelled = true;
-    };
-  }, []);
-
-  useEffect(() => {
-    if (!hydratedRef.current) return;
-    saveSettings(settings).catch((error) => {
-      setNotice(error instanceof Error ? `Could not save settings: ${error.message}` : "Could not save settings.");
-    });
-  }, [settings]);
-
-  useEffect(() => {
-    if (!hydratedRef.current) return;
-    sources.forEach((source) => {
-      saveSourceJson(source).catch((error) => {
-        setNotice(error instanceof Error ? `Could not save ${source.fileName}: ${error.message}` : `Could not save ${source.fileName}.`);
-      });
-    });
+    if (sources.length === 0) {
+      setActiveSourceId(undefined);
+      return;
+    }
+    setActiveSourceId((current) => (current && sources.some((source) => source.id === current) ? current : sources[0].id));
   }, [sources]);
 
   const runQueue = useCallback(() => {
@@ -232,21 +200,18 @@ export function App() {
     const handleMessage = (event: MessageEvent<{ type: string; result?: DetectionResult; failure?: DetectionFailure }>) => {
       if (event.data.type === "result" && event.data.result) {
         const { result } = event.data;
-        setSources((current) =>
-          current.map((item) => {
-            if (item.id !== result.sourceId) return item;
-            const crops = result.quads.filter(isValidQuad).map((quad) => createCrop(item.id, quad));
-            return {
-              ...item,
-              originalWidth: result.width,
-              originalHeight: result.height,
-              status: crops.length > 0 ? "ready" : "no-crops",
-              crops,
-              selectedCropId: crops[0]?.id,
-              error: undefined,
-            };
-          }),
-        );
+        updateSource(result.sourceId, (item) => {
+          const crops = result.quads.filter(isValidQuad).map((quad) => createCrop(item.id, quad));
+          return {
+            ...item,
+            originalWidth: result.width,
+            originalHeight: result.height,
+            status: crops.length > 0 ? "ready" : "no-crops",
+            crops,
+            selectedCropId: crops[0]?.id,
+            error: undefined,
+          };
+        });
       } else if (event.data.failure) {
         updateSource(event.data.failure.sourceId, (current) => ({ ...current, status: "error", error: event.data.failure!.message }));
       }
@@ -351,16 +316,11 @@ export function App() {
       const created = await Promise.all(supported.map(sourceFromFile));
       if (unsupported.length > 0) setNotice(`${unsupported.length} unsupported file${unsupported.length === 1 ? "" : "s"} skipped.`);
       if (created.length === 0) return;
-      setSources((current) => [...current, ...created]);
       setActiveSourceId((current) => current ?? created[0].id);
-      created.forEach((source) => {
-        saveSourceBlob(source).catch((error) => {
-          setNotice(error instanceof Error ? `Could not save ${source.fileName}: ${error.message}` : `Could not save ${source.fileName}.`);
-        });
-      });
+      persistSources(created);
       enqueue(created);
     },
-    [enqueue],
+    [enqueue, persistSources],
   );
 
   const addManualCrop = () => {
@@ -385,11 +345,8 @@ export function App() {
     if (!source || !confirm(`Remove ${source.fileName}?`)) return;
     cropWorkerRef.current?.postMessage({ type: "clear", sourceId });
     URL.revokeObjectURL(source.objectUrl);
-    deletePersistedSource(sourceId).catch((error) => {
-      setNotice(error instanceof Error ? `Could not remove saved source: ${error.message}` : "Could not remove saved source.");
-    });
-    setSources((current) => current.filter((item) => item.id !== sourceId));
     setActiveSourceId((current) => (current === sourceId ? sources.find((item) => item.id !== sourceId)?.id : current));
+    removeSource(sourceId);
   };
 
   const resetCrop = () => {
@@ -801,12 +758,12 @@ export function App() {
           <div className="settingsMenu">
             <label>
               Min crop area
-              <input type="range" min="1" max="12" value={settings.minCropAreaPercent} onChange={(event) => setSettings((current) => ({ ...current, minCropAreaPercent: Number(event.target.value) }))} />
+              <input type="range" min="1" max="12" value={settings.minCropAreaPercent} onChange={(event) => updateSettings((current) => ({ ...current, minCropAreaPercent: Number(event.target.value) }))} />
               <span>{settings.minCropAreaPercent}%</span>
             </label>
             <label>
               JPEG quality
-              <input type="range" min="60" max="100" value={settings.jpegQuality} onChange={(event) => setSettings((current) => ({ ...current, jpegQuality: Number(event.target.value) }))} />
+              <input type="range" min="60" max="100" value={settings.jpegQuality} onChange={(event) => updateSettings((current) => ({ ...current, jpegQuality: Number(event.target.value) }))} />
               <span>{settings.jpegQuality}</span>
             </label>
           </div>
