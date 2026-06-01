@@ -33,7 +33,7 @@ import {
   moveQuadPoint,
   nudgeQuadPoint,
 } from "./lib/geometry";
-import { renderCropBlob, renderCropCanvas } from "./lib/canvasCrop";
+import { renderCropBlob } from "./lib/canvasCrop";
 
 const supportedTypes = new Set(["image/jpeg", "image/png", "image/webp"]);
 const detectionTimeoutMs = 20000;
@@ -142,6 +142,8 @@ export function App() {
   const fileInputRef = useRef<HTMLInputElement>(null);
   const stageRef = useRef<HTMLDivElement>(null);
   const workerRef = useRef<Worker | undefined>(undefined);
+  const cropWorkerRef = useRef<Worker | undefined>(undefined);
+  const cropRequestIdRef = useRef(0);
   const queueRef = useRef<SourceImage[]>([]);
   const runningRef = useRef(false);
   const panStartRef = useRef<{ x: number; y: number; panX: number; panY: number } | undefined>(undefined);
@@ -236,6 +238,64 @@ export function App() {
       });
   }, [settings, updateSource]);
 
+  const renderCropBlobFast = useCallback(
+    (source: SourceImage, crop: CropRegion, quality: number, maxPreviewSide?: number) => {
+      if (typeof Worker === "undefined" || typeof OffscreenCanvas === "undefined") {
+        return renderCropBlob(source, crop, quality);
+      }
+
+      const requestId = cropRequestIdRef.current + 1;
+      cropRequestIdRef.current = requestId;
+
+      return new Promise<Blob>((resolve, reject) => {
+        let settled = false;
+        let worker: Worker;
+        try {
+          worker = cropWorkerRef.current ?? new Worker(new URL("./workers/crop.worker.ts", import.meta.url), { type: "module" });
+          cropWorkerRef.current = worker;
+        } catch {
+          renderCropBlob(source, crop, quality).then(resolve, reject);
+          return;
+        }
+
+        const cleanup = () => {
+          worker.removeEventListener("message", handleMessage);
+          worker.removeEventListener("error", handleError);
+        };
+        const finish = (callback: () => void) => {
+          if (settled) return;
+          settled = true;
+          cleanup();
+          callback();
+        };
+        const handleMessage = (event: MessageEvent<{ type: string; requestId: number; blob?: Blob; message?: string }>) => {
+          if (event.data.requestId !== requestId) return;
+          if (event.data.type === "result" && event.data.blob) {
+            finish(() => resolve(event.data.blob!));
+          } else {
+            finish(() => reject(new Error(event.data.message ?? "Crop render failed.")));
+          }
+        };
+        const handleError = (event: ErrorEvent) => {
+          finish(() => reject(new Error(event.message || "Crop worker failed.")));
+        };
+
+        worker.addEventListener("message", handleMessage);
+        worker.addEventListener("error", handleError);
+        worker.postMessage({
+          type: "render",
+          requestId,
+          sourceId: source.id,
+          objectUrl: source.objectUrl,
+          crop,
+          quality,
+          maxPreviewSide,
+        });
+      }).catch(() => renderCropBlob(source, crop, quality));
+    },
+    [],
+  );
+
   const enqueue = useCallback(
     (items: SourceImage[]) => {
       queueRef.current.push(...items);
@@ -279,6 +339,7 @@ export function App() {
   const deleteSource = (sourceId: string) => {
     const source = sources.find((item) => item.id === sourceId);
     if (!source || !confirm(`Remove ${source.fileName}?`)) return;
+    cropWorkerRef.current?.postMessage({ type: "clear", sourceId });
     URL.revokeObjectURL(source.objectUrl);
     setSources((current) => current.filter((item) => item.id !== sourceId));
     setActiveSourceId((current) => (current === sourceId ? sources.find((item) => item.id !== sourceId)?.id : current));
@@ -418,6 +479,7 @@ export function App() {
   useEffect(() => {
     return () => {
       if (viewportFrameRef.current !== undefined) window.cancelAnimationFrame(viewportFrameRef.current);
+      cropWorkerRef.current?.terminate();
     };
   }, []);
 
@@ -442,24 +504,17 @@ export function App() {
       });
       return;
     }
-    if (dragHandle !== undefined) {
-      setPreviewBusy(false);
-      return;
-    }
     let cancelled = false;
     setPreviewBusy(true);
     const timer = window.setTimeout(() => {
-      renderCropCanvas(previewSource, previewCrop, 900)
-        .then((canvas) => {
+      renderCropBlobFast(previewSource, previewCrop, 90, 900)
+        .then((blob) => {
           if (cancelled) return;
-          canvas.toBlob((blob) => {
-            if (!blob || cancelled) return;
-            const url = URL.createObjectURL(blob);
-            setPreviewUrl((current) => {
-              if (current) URL.revokeObjectURL(current);
-              return url;
-            });
-          }, "image/jpeg", 0.9);
+          const url = URL.createObjectURL(blob);
+          setPreviewUrl((current) => {
+            if (current) URL.revokeObjectURL(current);
+            return url;
+          });
         })
         .finally(() => {
           if (!cancelled) setPreviewBusy(false);
@@ -470,11 +525,11 @@ export function App() {
       window.clearTimeout(timer);
     };
   }, [
-    dragHandle,
     previewCrop,
     previewCropPointsKey,
     previewSource,
     previewSource?.objectUrl,
+    renderCropBlobFast,
   ]);
 
   useEffect(() => {
@@ -562,7 +617,7 @@ export function App() {
     for (const source of ready) {
       for (let index = 0; index < source.crops.length; index += 1) {
         const crop = source.crops[index];
-        const blob = await renderCropBlob(source, crop, settings.jpegQuality);
+        const blob = await renderCropBlobFast(source, crop, settings.jpegQuality);
         const name = uniqueZipName(cropFileName(source.fileName, index + 1, source.crops.length), used);
         if (zip) zip.file(name, blob);
         else triggerDownload(blob, name);

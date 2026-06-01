@@ -2,6 +2,7 @@ import type { CropRegion, Quad, SourceImage } from "../types";
 import { cropOutputSize, quadBounds } from "./geometry";
 
 type Matrix3 = [number, number, number, number, number, number, number, number, number];
+type RenderCanvas = HTMLCanvasElement | OffscreenCanvas;
 
 const bitmapCache = new Map<string, Promise<ImageBitmap>>();
 
@@ -78,12 +79,21 @@ function sampleBilinear(data: Uint8ClampedArray, width: number, height: number, 
   });
 }
 
-export async function renderCropCanvas(
-  source: SourceImage,
+function createRenderCanvas(width: number, height: number): RenderCanvas {
+  if (typeof document !== "undefined") {
+    const canvas = document.createElement("canvas");
+    canvas.width = width;
+    canvas.height = height;
+    return canvas;
+  }
+  return new OffscreenCanvas(width, height);
+}
+
+export function renderCropFromBitmap(
+  bitmap: ImageBitmap,
   crop: CropRegion,
   maxPreviewSide?: number,
-): Promise<HTMLCanvasElement> {
-  const bitmap = await getBitmap(source);
+): RenderCanvas {
   const output = cropOutputSize(crop.points);
   const scale = maxPreviewSide ? Math.min(1, maxPreviewSide / Math.max(output.width, output.height)) : 1;
   const width = Math.max(1, Math.round(output.width * scale));
@@ -91,9 +101,7 @@ export async function renderCropCanvas(
   const scaledQuad = crop.points.map((point) => ({ x: point.x * scale, y: point.y * scale })) as Quad;
   const bounds = quadBounds(scaledQuad);
 
-  const sourceCanvas = document.createElement("canvas");
-  sourceCanvas.width = Math.ceil(bounds.width + 4);
-  sourceCanvas.height = Math.ceil(bounds.height + 4);
+  const sourceCanvas = createRenderCanvas(Math.ceil(bounds.width + 4), Math.ceil(bounds.height + 4));
   const sourceContext = sourceCanvas.getContext("2d", { willReadFrequently: true });
   if (!sourceContext) throw new Error("Canvas is unavailable.");
   sourceContext.drawImage(
@@ -110,9 +118,7 @@ export async function renderCropCanvas(
 
   const localQuad = scaledQuad.map((point) => ({ x: point.x - bounds.left + 2, y: point.y - bounds.top + 2 })) as Quad;
   const sourceData = sourceContext.getImageData(0, 0, sourceCanvas.width, sourceCanvas.height);
-  const canvas = document.createElement("canvas");
-  canvas.width = width;
-  canvas.height = height;
+  const canvas = createRenderCanvas(width, height);
   const context = canvas.getContext("2d");
   if (!context) throw new Error("Canvas is unavailable.");
   const target = context.createImageData(width, height);
@@ -136,13 +142,33 @@ export async function renderCropCanvas(
   return canvas;
 }
 
-export async function renderCropBlob(source: SourceImage, crop: CropRegion, quality: number): Promise<Blob> {
-  const canvas = await renderCropCanvas(source, crop);
+export async function renderCropCanvas(
+  source: SourceImage,
+  crop: CropRegion,
+  maxPreviewSide?: number,
+): Promise<HTMLCanvasElement> {
+  const canvas = renderCropFromBitmap(await getBitmap(source), crop, maxPreviewSide);
+  if (canvas instanceof HTMLCanvasElement) return canvas;
+  throw new Error("HTML canvas is unavailable.");
+}
+
+export function canvasToBlob(canvas: RenderCanvas, quality: number): Promise<Blob> {
+  const jpegQuality = Math.min(1, Math.max(0.1, quality / 100));
+  if (typeof OffscreenCanvas !== "undefined" && canvas instanceof OffscreenCanvas) {
+    return canvas.convertToBlob({ type: "image/jpeg", quality: jpegQuality });
+  }
+  if (!(canvas instanceof HTMLCanvasElement)) {
+    return Promise.reject(new Error("Canvas encoding is unavailable."));
+  }
   return new Promise((resolve, reject) => {
     canvas.toBlob(
-      (blob) => (blob ? resolve(blob) : reject(new Error("Could not encode JPEG."))),
+      (blob: Blob | null) => (blob ? resolve(blob) : reject(new Error("Could not encode JPEG."))),
       "image/jpeg",
-      Math.min(1, Math.max(0.1, quality / 100)),
+      jpegQuality,
     );
   });
+}
+
+export async function renderCropBlob(source: SourceImage, crop: CropRegion, quality: number): Promise<Blob> {
+  return canvasToBlob(renderCropFromBitmap(await getBitmap(source), crop), quality);
 }
