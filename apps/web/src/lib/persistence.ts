@@ -113,10 +113,15 @@ export async function saveSettings(settings: AppSettings) {
   await Promise.all([tx.store.put({ id: settingsKey, value: settings, updatedAt: Date.now() }), tx.done]);
 }
 
-export async function saveSourceBlob(source: SourceImage) {
+export async function saveSource(source: SourceImage) {
   const db = await getDatabase();
-  const tx = db.transaction("sourceBlobs", "readwrite");
-  await Promise.all([tx.store.put({ id: source.id, blob: source.blob, updatedAt: Date.now() }), tx.done]);
+  const tx = db.transaction(["sourceJson", "sourceBlobs"], "readwrite");
+  const updatedAt = Date.now();
+  await Promise.all([
+    tx.objectStore("sourceJson").put({ ...toPersistedSourceJson(source), updatedAt }),
+    tx.objectStore("sourceBlobs").put({ id: source.id, blob: source.blob, updatedAt }),
+    tx.done,
+  ]);
 }
 
 export async function saveSourceJson(source: SourceImage) {

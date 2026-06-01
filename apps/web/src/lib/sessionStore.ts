@@ -5,7 +5,7 @@ import {
   deleteSource as deletePersistedSource,
   loadPersistedState,
   saveSettings,
-  saveSourceBlob,
+  saveSource,
   saveSourceJson,
 } from "./persistence";
 
@@ -34,6 +34,8 @@ export function usePersistedSession(onPersistenceError: (error: unknown, fallbac
   const queryClient = useQueryClient();
   const sessionQuery = useQuery({
     queryKey: sessionQueryKey,
+    staleTime: Infinity,
+    refetchOnWindowFocus: false,
     queryFn: async (): Promise<SessionState> => {
       const persisted = await loadPersistedState();
       return {
@@ -55,7 +57,7 @@ export function usePersistedSession(onPersistenceError: (error: unknown, fallbac
 
   const addSourcesMutation = useMutation({
     mutationFn: async (sources: SourceImage[]) => {
-      await Promise.all(sources.map(saveSourceBlob));
+      await Promise.all(sources.map(saveSource));
     },
     onError: (error) => onPersistenceError(error, "Could not save uploaded images."),
   });

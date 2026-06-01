@@ -68,6 +68,36 @@ function isEditableTarget(target: EventTarget | null) {
   return target instanceof HTMLInputElement || target instanceof HTMLTextAreaElement || target instanceof HTMLSelectElement || target.isContentEditable;
 }
 
+async function bitmapFromBlob(blob: Blob): Promise<ImageBitmap> {
+  try {
+    return await createImageBitmap(blob, { imageOrientation: "from-image" });
+  } catch {
+    const objectUrl = URL.createObjectURL(blob);
+    try {
+      const image = new Image();
+      image.decoding = "async";
+      image.src = objectUrl;
+      await image.decode();
+      const canvas = document.createElement("canvas");
+      canvas.width = image.naturalWidth;
+      canvas.height = image.naturalHeight;
+      const context = canvas.getContext("2d");
+      if (!context) throw new Error("Canvas is unavailable.");
+      context.drawImage(image, 0, 0);
+      return createImageBitmap(canvas);
+    } finally {
+      URL.revokeObjectURL(objectUrl);
+    }
+  }
+}
+
+async function imageDimensions(blob: Blob): Promise<{ width: number; height: number }> {
+  const bitmap = await bitmapFromBlob(blob);
+  const dimensions = { width: bitmap.width, height: bitmap.height };
+  bitmap.close();
+  return dimensions;
+}
+
 function IconButton({
   label,
   children,
@@ -100,22 +130,21 @@ function createCrop(sourceId: string, points: Quad): CropRegion {
 
 async function sourceFromFile(file: File): Promise<SourceImage> {
   const objectUrl = URL.createObjectURL(file);
-  const bitmap = await createImageBitmap(file, { imageOrientation: "from-image" });
+  const dimensions = await imageDimensions(file);
   const source: SourceImage = {
     id: id("source"),
     fileName: file.name,
     fileType: file.type,
     blob: file,
     objectUrl,
-    originalWidth: bitmap.width,
-    originalHeight: bitmap.height,
-    displayWidth: bitmap.width,
-    displayHeight: bitmap.height,
+    originalWidth: dimensions.width,
+    originalHeight: dimensions.height,
+    displayWidth: dimensions.width,
+    displayHeight: dimensions.height,
     status: "queued",
     crops: [],
     batchSelected: true,
   };
-  bitmap.close();
   return source;
 }
 
@@ -236,7 +265,7 @@ export function App() {
       updateSource(source.id, (current) => ({ ...current, status: "error", error: "Detection timed out." }));
     }, detectionTimeoutMs);
 
-    createImageBitmap(source.blob, { imageOrientation: "from-image" })
+    bitmapFromBlob(source.blob)
       .then((bitmap) => worker.postMessage({ sourceId: source.id, bitmap, minCropAreaPercent: settings.minCropAreaPercent }, [bitmap]))
       .catch((error) => {
         if (!finishRun()) return;
@@ -317,8 +346,11 @@ export function App() {
       const unsupported = nextFiles.filter((file) => !supportedTypes.has(file.type));
       setUploadingFiles(supported.length);
       try {
-        const created = await Promise.all(supported.map(sourceFromFile));
-        if (unsupported.length > 0) setNotice(`${unsupported.length} unsupported file${unsupported.length === 1 ? "" : "s"} skipped.`);
+        const results = await Promise.allSettled(supported.map(sourceFromFile));
+        const created = results.flatMap((result) => (result.status === "fulfilled" ? [result.value] : []));
+        const failed = results.length - created.length;
+        const skipped = unsupported.length + failed;
+        if (skipped > 0) setNotice(`${skipped} file${skipped === 1 ? "" : "s"} skipped.`);
         if (created.length === 0) return;
         setActiveSourceId((current) => current ?? created[0].id);
         await persistSources(created);
