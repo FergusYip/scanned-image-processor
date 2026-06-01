@@ -34,6 +34,7 @@ import {
   nudgeQuadPoint,
 } from "./lib/geometry";
 import { renderCropBlob } from "./lib/canvasCrop";
+import { deleteSource as deletePersistedSource, loadPersistedState, saveSettings, saveSource, saveSourceJson } from "./lib/persistence";
 
 const supportedTypes = new Set(["image/jpeg", "image/png", "image/webp"]);
 const detectionTimeoutMs = 20000;
@@ -109,6 +110,7 @@ async function sourceFromFile(file: File): Promise<SourceImage> {
     id: id("source"),
     fileName: file.name,
     fileType: file.type,
+    blob: file,
     objectUrl,
     originalWidth: bitmap.width,
     originalHeight: bitmap.height,
@@ -152,6 +154,7 @@ export function App() {
   const panRef = useRef({ x: 0, y: 0 });
   const viewportFrameRef = useRef<number | undefined>(undefined);
   const pendingViewportRef = useRef<{ zoom: number; pan: Point } | undefined>(undefined);
+  const hydratedRef = useRef(false);
 
   const activeSource = sources.find((source) => source.id === activeSourceId);
   const selectedCrop = activeSource?.crops.find((crop) => crop.id === activeSource.selectedCropId);
@@ -164,6 +167,44 @@ export function App() {
   const updateSource = useCallback((sourceId: string, updater: (source: SourceImage) => SourceImage) => {
     setSources((current) => current.map((source) => (source.id === sourceId ? updater(source) : source)));
   }, []);
+
+  useEffect(() => {
+    let cancelled = false;
+    loadPersistedState()
+      .then((persisted) => {
+        if (cancelled) return;
+        if (persisted.settings) setSettings(persisted.settings);
+        if (persisted.sources.length > 0) {
+          setSources(persisted.sources);
+          setActiveSourceId(persisted.sources[0].id);
+        }
+      })
+      .catch((error) => {
+        setNotice(error instanceof Error ? `Could not load saved session: ${error.message}` : "Could not load saved session.");
+      })
+      .finally(() => {
+        if (!cancelled) hydratedRef.current = true;
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  useEffect(() => {
+    if (!hydratedRef.current) return;
+    saveSettings(settings).catch((error) => {
+      setNotice(error instanceof Error ? `Could not save settings: ${error.message}` : "Could not save settings.");
+    });
+  }, [settings]);
+
+  useEffect(() => {
+    if (!hydratedRef.current) return;
+    sources.forEach((source) => {
+      saveSourceJson(source).catch((error) => {
+        setNotice(error instanceof Error ? `Could not save ${source.fileName}: ${error.message}` : `Could not save ${source.fileName}.`);
+      });
+    });
+  }, [sources]);
 
   const runQueue = useCallback(() => {
     if (runningRef.current || queueRef.current.length === 0) return;
@@ -228,9 +269,7 @@ export function App() {
       updateSource(source.id, (current) => ({ ...current, status: "error", error: "Detection timed out." }));
     }, detectionTimeoutMs);
 
-    fetch(source.objectUrl)
-      .then((response) => response.blob())
-      .then((blob) => createImageBitmap(blob, { imageOrientation: "from-image" }))
+    createImageBitmap(source.blob, { imageOrientation: "from-image" })
       .then((bitmap) => worker.postMessage({ sourceId: source.id, bitmap, minCropAreaPercent: settings.minCropAreaPercent }, [bitmap]))
       .catch((error) => {
         if (!finishRun()) return;
@@ -314,6 +353,11 @@ export function App() {
       if (created.length === 0) return;
       setSources((current) => [...current, ...created]);
       setActiveSourceId((current) => current ?? created[0].id);
+      created.forEach((source) => {
+        saveSource(source).catch((error) => {
+          setNotice(error instanceof Error ? `Could not save ${source.fileName}: ${error.message}` : `Could not save ${source.fileName}.`);
+        });
+      });
       enqueue(created);
     },
     [enqueue],
@@ -341,6 +385,9 @@ export function App() {
     if (!source || !confirm(`Remove ${source.fileName}?`)) return;
     cropWorkerRef.current?.postMessage({ type: "clear", sourceId });
     URL.revokeObjectURL(source.objectUrl);
+    deletePersistedSource(sourceId).catch((error) => {
+      setNotice(error instanceof Error ? `Could not remove saved source: ${error.message}` : "Could not remove saved source.");
+    });
     setSources((current) => current.filter((item) => item.id !== sourceId));
     setActiveSourceId((current) => (current === sourceId ? sources.find((item) => item.id !== sourceId)?.id : current));
   };

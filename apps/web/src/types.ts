@@ -19,6 +19,7 @@ export type SourceImage = {
   id: string;
   fileName: string;
   fileType: string;
+  blob: Blob;
   objectUrl: string;
   originalWidth: number;
   originalHeight: number;
