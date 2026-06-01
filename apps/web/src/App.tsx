@@ -818,7 +818,7 @@ export function App() {
             >
               <img draggable={false} src={activeSource.objectUrl} alt={activeSource.fileName} onDragStart={(event) => event.preventDefault()} />
               <svg viewBox={`0 0 ${activeSource.originalWidth} ${activeSource.originalHeight}`} className="overlay" onDragStart={(event) => event.preventDefault()}>
-                {activeSource.crops.map((crop) => {
+                {activeSource.crops.map((crop, cropIndex) => {
                   const selected = crop.id === activeSource.selectedCropId;
                   const points = crop.points.map((point) => `${point.x},${point.y}`).join(" ");
                   return (
@@ -837,6 +837,13 @@ export function App() {
                           cx={point.x}
                           cy={point.y}
                           r={Math.max(6 / (imageMetrics.fit * zoom), 2)}
+                          tabIndex={0}
+                          role="button"
+                          aria-label={`Crop ${cropIndex + 1} handle ${index + 1}`}
+                          onFocus={() => {
+                            setSelectedHandle(index);
+                            updateSource(activeSource.id, (source) => ({ ...source, selectedCropId: crop.id }));
+                          }}
                           onPointerDown={(event) => {
                             event.stopPropagation();
                             event.currentTarget.setPointerCapture(event.pointerId);

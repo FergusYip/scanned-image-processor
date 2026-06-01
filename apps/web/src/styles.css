@@ -274,6 +274,12 @@ input[type="checkbox"] {
   stroke: oklch(0.1 0 0);
 }
 
+.handle:focus-visible {
+  outline: none;
+  stroke: var(--selected-strong);
+  stroke-width: 4px;
+}
+
 .cropViewfinder {
   position: absolute;
   z-index: 12;
