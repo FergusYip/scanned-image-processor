@@ -308,18 +308,6 @@ input[type="checkbox"] {
   height: 1px;
 }
 
-.cropViewfinderCrosshair {
-  position: absolute;
-  left: 50%;
-  top: 50%;
-  width: 11px;
-  height: 11px;
-  border: 2px solid var(--selected-strong);
-  border-radius: 50%;
-  transform: translate(-50%, -50%);
-  box-shadow: 0 0 0 1px oklch(0.08 0 0 / 0.72);
-}
-
 .cropViewfinderReadout {
   position: absolute;
   right: 6px;

@@ -39,7 +39,7 @@ const supportedTypes = new Set(["image/jpeg", "image/png", "image/webp"]);
 const detectionTimeoutMs = 20000;
 const previewMinWidth = 260;
 const viewfinderSize = 172;
-const viewfinderMagnification = 4;
+const viewfinderMagnification = 6;
 
 const initialSettings: AppSettings = {
   minCropAreaPercent: 4,
@@ -870,7 +870,6 @@ export function App() {
                 backgroundPosition: `${viewfinderSize / 2 - viewfinder.sourceX * imageMetrics.fit * zoom * viewfinderMagnification}px ${viewfinderSize / 2 - viewfinder.sourceY * imageMetrics.fit * zoom * viewfinderMagnification}px`,
               }}
             >
-              <span className="cropViewfinderCrosshair" />
               <span className="cropViewfinderReadout">{`${Math.round(viewfinder.sourceX)}, ${Math.round(viewfinder.sourceY)}`}</span>
             </div>
           )}
