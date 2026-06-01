@@ -506,7 +506,7 @@ export function App() {
     }
     let cancelled = false;
     setPreviewBusy(true);
-    const timer = window.setTimeout(() => {
+    const frame = window.requestAnimationFrame(() => {
       renderCropBlobFast(previewSource, previewCrop, 90, 900)
         .then((blob) => {
           if (cancelled) return;
@@ -519,10 +519,10 @@ export function App() {
         .finally(() => {
           if (!cancelled) setPreviewBusy(false);
         });
-    }, 80);
+    });
     return () => {
       cancelled = true;
-      window.clearTimeout(timer);
+      window.cancelAnimationFrame(frame);
     };
   }, [
     previewCrop,
