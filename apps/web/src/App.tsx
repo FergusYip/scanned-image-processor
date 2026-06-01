@@ -442,6 +442,10 @@ export function App() {
       });
       return;
     }
+    if (dragHandle !== undefined) {
+      setPreviewBusy(false);
+      return;
+    }
     let cancelled = false;
     setPreviewBusy(true);
     const timer = window.setTimeout(() => {
@@ -466,6 +470,7 @@ export function App() {
       window.clearTimeout(timer);
     };
   }, [
+    dragHandle,
     previewCrop,
     previewCropPointsKey,
     previewSource,
