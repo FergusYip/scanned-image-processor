@@ -170,6 +170,7 @@ export function App() {
   const cropWorkerRef = useRef<Worker | undefined>(undefined);
   const cropRequestIdRef = useRef(0);
   const queueRef = useRef<SourceImage[]>([]);
+  const resumedSourceIdsRef = useRef(new Set<string>());
   const runningRef = useRef(false);
   const panStartRef = useRef<{ x: number; y: number; panX: number; panY: number } | undefined>(undefined);
   const previewResizeRef = useRef<{ x: number; width: number } | undefined>(undefined);
@@ -338,6 +339,14 @@ export function App() {
     },
     [runQueue],
   );
+
+  useEffect(() => {
+    if (isLoading) return;
+    const queued = sources.filter((source) => source.status === "queued" && !resumedSourceIdsRef.current.has(source.id));
+    if (queued.length === 0) return;
+    queued.forEach((source) => resumedSourceIdsRef.current.add(source.id));
+    enqueue(queued);
+  }, [enqueue, isLoading, sources]);
 
   const addFiles = useCallback(
     async (files: FileList | File[]) => {
