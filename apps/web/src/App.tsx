@@ -1,6 +1,5 @@
 import JSZip from "jszip";
 import {
-  Check,
   ChevronLeft,
   ChevronRight,
   Download,
@@ -171,6 +170,7 @@ export function App() {
   const cropRequestIdRef = useRef(0);
   const queueRef = useRef<SourceImage[]>([]);
   const resumedSourceIdsRef = useRef(new Set<string>());
+  const lastSelectedSourceIdRef = useRef<string | undefined>(undefined);
   const runningRef = useRef(false);
   const panStartRef = useRef<{ x: number; y: number; panX: number; panY: number } | undefined>(undefined);
   const previewResizeRef = useRef<{ x: number; width: number } | undefined>(undefined);
@@ -424,6 +424,37 @@ export function App() {
     const current = Math.max(0, sources.findIndex((source) => source.id === activeSourceId));
     const next = (current + offset + sources.length) % sources.length;
     setActiveSourceId(sources[next].id);
+  };
+
+  const selectSourceFromStrip = (sourceId: string, event: React.MouseEvent<HTMLButtonElement>) => {
+    const currentIndex = sources.findIndex((source) => source.id === sourceId);
+    if (currentIndex === -1) return;
+
+    setActiveSourceId(sourceId);
+
+    if (event.shiftKey && lastSelectedSourceIdRef.current) {
+      const anchorIndex = sources.findIndex((source) => source.id === lastSelectedSourceIdRef.current);
+      if (anchorIndex !== -1) {
+        const rangeStart = Math.min(anchorIndex, currentIndex);
+        const rangeEnd = Math.max(anchorIndex, currentIndex);
+        const selectedIds = new Set(sources.slice(rangeStart, rangeEnd + 1).map((source) => source.id));
+        sources.forEach((source) => {
+          updateSource(source.id, (item) => ({ ...item, batchSelected: selectedIds.has(item.id) }));
+        });
+        return;
+      }
+    }
+
+    if (event.metaKey || event.ctrlKey) {
+      updateSource(sourceId, (item) => ({ ...item, batchSelected: !item.batchSelected }));
+      lastSelectedSourceIdRef.current = sourceId;
+      return;
+    }
+
+    sources.forEach((source) => {
+      updateSource(source.id, (item) => ({ ...item, batchSelected: item.id === sourceId }));
+    });
+    lastSelectedSourceIdRef.current = sourceId;
   };
 
   const updateSelectedCrop = (updater: (crop: CropRegion) => CropRegion) => {
@@ -751,6 +782,9 @@ export function App() {
           <IconButton label="Delete crop" onClick={deleteCrop} disabled={!selectedCrop}>
             <Trash2 size={18} />
           </IconButton>
+          <IconButton label="Remove source image" onClick={() => activeSource && deleteSource(activeSource.id)} disabled={!activeSource}>
+            <X size={18} />
+          </IconButton>
           <IconButton label="Reset crop" onClick={resetCrop} disabled={!selectedCrop}>
             <Redo2 size={18} />
           </IconButton>
@@ -987,19 +1021,27 @@ export function App() {
       </section>
 
       <footer className="sourceStrip">
-        {sources.map((source) => (
-          <div key={source.id} className="sourceTile" data-active={source.id === activeSourceId}>
-            <button className="thumbButton" type="button" onClick={() => setActiveSourceId(source.id)}>
-              <img src={source.objectUrl} alt={source.fileName} />
+        {sources.map((source) => {
+          const isActive = source.id === activeSourceId;
+          return (
+            <button
+              key={source.id}
+              className="sourceTile"
+              type="button"
+              data-active={isActive}
+              data-selected={source.batchSelected}
+              aria-current={isActive ? "true" : undefined}
+              aria-pressed={source.batchSelected}
+              aria-label={`${source.batchSelected ? "Selected" : "Select"} ${source.fileName}`}
+              title={source.fileName}
+              onClick={(event) => selectSourceFromStrip(source.id, event)}
+            >
+              <span className="thumbFrame">
+                <img src={source.objectUrl} alt={source.fileName} />
+              </span>
             </button>
-            <button className="checkButton" type="button" aria-label={`Batch select ${source.fileName}`} onClick={() => updateSource(source.id, (item) => ({ ...item, batchSelected: !item.batchSelected }))}>
-              {source.batchSelected ? <Check size={14} /> : null}
-            </button>
-            <button className="removeButton" type="button" aria-label={`Remove ${source.fileName}`} onClick={() => deleteSource(source.id)}>
-              <X size={14} />
-            </button>
-          </div>
-        ))}
+          );
+        })}
         {isLoading &&
           [0, 1, 2].map((item) => (
             <div key={item} className="sourceSkeleton" aria-hidden="true">
