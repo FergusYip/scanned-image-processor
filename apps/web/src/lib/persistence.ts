@@ -51,6 +51,7 @@ interface ScannedImageProcessorDb extends DBSchema {
 }
 
 let database: Promise<IDBPDatabase<ScannedImageProcessorDb>> | undefined;
+const sourceJsonSaves = new Map<string, Promise<void>>();
 
 function getDatabase() {
   database ??= openDB<ScannedImageProcessorDb>(databaseName, databaseVersion, {
@@ -117,8 +118,19 @@ export async function saveSourceBlob(source: SourceImage) {
 }
 
 export async function saveSourceJson(source: SourceImage) {
-  const db = await getDatabase();
-  await db.put("sourceJson", toPersistedSourceJson(source));
+  const persistedSource = toPersistedSourceJson(source);
+  const previousSave = sourceJsonSaves.get(source.id) ?? Promise.resolve();
+  const nextSave = previousSave
+    .catch(() => undefined)
+    .then(async () => {
+      const db = await getDatabase();
+      await db.put("sourceJson", persistedSource);
+    })
+    .finally(() => {
+      if (sourceJsonSaves.get(source.id) === nextSave) sourceJsonSaves.delete(source.id);
+    });
+  sourceJsonSaves.set(source.id, nextSave);
+  return nextSave;
 }
 
 export async function deleteSource(sourceId: string) {
