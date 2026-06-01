@@ -132,6 +132,7 @@ export function App() {
   const [previewBusy, setPreviewBusy] = useState(false);
   const [previewWidth, setPreviewWidth] = useState(defaultPreviewWidth);
   const [notice, setNotice] = useState<string>();
+  const [uploadingFiles, setUploadingFiles] = useState(0);
   const [stageSize, setStageSize] = useState({ width: 900, height: 620 });
   const [viewfinder, setViewfinder] = useState<{ stageX: number; stageY: number; sourceX: number; sourceY: number }>();
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -150,8 +151,9 @@ export function App() {
   const reportPersistenceError = useCallback((error: unknown, fallbackMessage: string) => {
     setNotice(error instanceof Error ? `${fallbackMessage} ${error.message}` : fallbackMessage);
   }, []);
-  const { session, loadError, updateSettings, addSources: persistSources, updateSource, removeSource } = usePersistedSession(reportPersistenceError);
+  const { session, isLoading, isUploadingSources, loadError, updateSettings, addSources: persistSources, updateSource, removeSource } = usePersistedSession(reportPersistenceError);
   const { settings, sources } = session;
+  const isUploading = uploadingFiles > 0 || isUploadingSources;
 
   const activeSource = sources.find((source) => source.id === activeSourceId);
   const selectedCrop = activeSource?.crops.find((crop) => crop.id === activeSource.selectedCropId);
@@ -313,12 +315,17 @@ export function App() {
       const nextFiles = Array.from(files);
       const supported = nextFiles.filter((file) => supportedTypes.has(file.type));
       const unsupported = nextFiles.filter((file) => !supportedTypes.has(file.type));
-      const created = await Promise.all(supported.map(sourceFromFile));
-      if (unsupported.length > 0) setNotice(`${unsupported.length} unsupported file${unsupported.length === 1 ? "" : "s"} skipped.`);
-      if (created.length === 0) return;
-      setActiveSourceId((current) => current ?? created[0].id);
-      persistSources(created);
-      enqueue(created);
+      setUploadingFiles(supported.length);
+      try {
+        const created = await Promise.all(supported.map(sourceFromFile));
+        if (unsupported.length > 0) setNotice(`${unsupported.length} unsupported file${unsupported.length === 1 ? "" : "s"} skipped.`);
+        if (created.length === 0) return;
+        setActiveSourceId((current) => current ?? created[0].id);
+        await persistSources(created);
+        enqueue(created);
+      } finally {
+        setUploadingFiles(0);
+      }
     },
     [enqueue, persistSources],
   );
@@ -695,7 +702,7 @@ export function App() {
       <header className="topbar">
         <div className="toolGroup">
           <IconButton label="Upload images" onClick={() => fileInputRef.current?.click()}>
-            <Upload size={18} />
+            {isUploading ? <Loader2 className="spin" size={18} /> : <Upload size={18} />}
           </IconButton>
           <IconButton label="Add crop" onClick={addManualCrop} disabled={!activeSource}>
             <ImagePlus size={18} />
@@ -799,11 +806,25 @@ export function App() {
           }}
         >
           {!activeSource && (
-            <button className="dropZone" type="button" onClick={() => fileInputRef.current?.click()}>
-              <FileImage size={34} />
-              <span>Upload or drop scanner-bed images</span>
-              <small>JPG, PNG, and WebP stay local in this browser.</small>
-            </button>
+            isLoading ? (
+              <div className="stageLoading" role="status" aria-live="polite">
+                <div className="loadingFrame">
+                  <div className="loadingBar" />
+                  <div className="loadingGrid">
+                    <span />
+                    <span />
+                    <span />
+                  </div>
+                </div>
+                <span>Loading saved workspace</span>
+              </div>
+            ) : (
+              <button className="dropZone" type="button" onClick={() => fileInputRef.current?.click()} disabled={isUploading}>
+                {isUploading ? <Loader2 className="spin" size={34} /> : <FileImage size={34} />}
+                <span>{isUploading ? `Uploading ${uploadingFiles || "selected"} image${uploadingFiles === 1 ? "" : "s"}` : "Upload or drop scanner-bed images"}</span>
+                <small>{isUploading ? "Saving originals locally before detection starts." : "JPG, PNG, and WebP stay local in this browser."}</small>
+              </button>
+            )
           )}
           {activeSource && imageMetrics && (
             <div
@@ -938,6 +959,18 @@ export function App() {
             </button>
           </div>
         ))}
+        {isLoading &&
+          [0, 1, 2].map((item) => (
+            <div key={item} className="sourceSkeleton" aria-hidden="true">
+              <span />
+            </div>
+          ))}
+        {isUploading && (
+          <div className="sourceUploadStatus" role="status" aria-live="polite">
+            <Loader2 className="spin" size={16} />
+            <span>Uploading</span>
+          </div>
+        )}
         {sources.length > 0 && (
           <button className="addMoreTile" type="button" onClick={() => fileInputRef.current?.click()}>
             <Plus size={20} />

@@ -216,6 +216,10 @@ input[type="checkbox"] {
   cursor: pointer;
 }
 
+.dropZone:disabled {
+  cursor: wait;
+}
+
 .dropZone span {
   font-size: 1.05rem;
   font-weight: 650;
@@ -223,6 +227,63 @@ input[type="checkbox"] {
 
 .dropZone small {
   color: var(--muted);
+}
+
+.stageLoading {
+  display: grid;
+  place-items: center;
+  gap: 14px;
+  width: min(460px, calc(100vw - 48px));
+  color: var(--muted);
+  font-size: 0.88rem;
+}
+
+.loadingFrame {
+  width: 100%;
+  min-height: 220px;
+  display: grid;
+  align-content: center;
+  gap: 18px;
+  padding: 28px;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  background: oklch(0.17 0 0);
+}
+
+.loadingBar,
+.loadingGrid span,
+.sourceSkeleton span {
+  position: relative;
+  overflow: hidden;
+  background: oklch(0.27 0 0);
+}
+
+.loadingBar::after,
+.loadingGrid span::after,
+.sourceSkeleton span::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  transform: translateX(-100%);
+  background: linear-gradient(90deg, transparent, oklch(0.42 0 0 / 0.55), transparent);
+  animation: loadingSweep 1400ms ease-in-out infinite;
+}
+
+.loadingBar {
+  height: 18px;
+  width: 58%;
+  border-radius: 999px;
+}
+
+.loadingGrid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 12px;
+}
+
+.loadingGrid span {
+  aspect-ratio: 1;
+  border-radius: 8px;
 }
 
 .imageLayer {
@@ -511,6 +572,37 @@ input[type="checkbox"] {
   cursor: pointer;
 }
 
+.sourceSkeleton {
+  flex: 0 0 76px;
+  height: 94px;
+  display: grid;
+  place-items: center;
+  padding: 8px;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: var(--surface-1);
+}
+
+.sourceSkeleton span {
+  width: 58px;
+  height: 74px;
+  border-radius: 8px;
+}
+
+.sourceUploadStatus {
+  flex: 0 0 auto;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  height: 34px;
+  padding: 0 10px;
+  color: var(--muted);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--surface-1);
+  font-size: 0.82rem;
+}
+
 .toast {
   position: fixed;
   right: 16px;
@@ -618,6 +710,12 @@ kbd {
 @keyframes spin {
   to {
     transform: rotate(360deg);
+  }
+}
+
+@keyframes loadingSweep {
+  to {
+    transform: translateX(100%);
   }
 }
 

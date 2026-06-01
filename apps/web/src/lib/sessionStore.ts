@@ -56,7 +56,6 @@ export function usePersistedSession(onPersistenceError: (error: unknown, fallbac
   const addSourcesMutation = useMutation({
     mutationFn: async (sources: SourceImage[]) => {
       await Promise.all(sources.map(saveSourceBlob));
-      await Promise.all(sources.map(saveSourceJson));
     },
     onError: (error) => onPersistenceError(error, "Could not save uploaded images."),
   });
@@ -77,11 +76,11 @@ export function usePersistedSession(onPersistenceError: (error: unknown, fallbac
   );
 
   const addSources = useCallback(
-    (sources: SourceImage[]) => {
+    async (sources: SourceImage[]) => {
       if (sources.length === 0) return;
       const current = getSession(queryClient);
       queryClient.setQueryData<SessionState>(sessionQueryKey, { ...current, sources: [...current.sources, ...sources] });
-      addSourcesMutation.mutate(sources);
+      await addSourcesMutation.mutateAsync(sources);
     },
     [addSourcesMutation, queryClient],
   );
@@ -114,6 +113,7 @@ export function usePersistedSession(onPersistenceError: (error: unknown, fallbac
   return {
     session: sessionQuery.data ?? emptySession,
     isLoading: sessionQuery.isLoading,
+    isUploadingSources: addSourcesMutation.isPending,
     loadError: sessionQuery.error,
     updateSettings,
     addSources,

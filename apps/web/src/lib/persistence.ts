@@ -109,12 +109,14 @@ export async function loadPersistedState(): Promise<{ settings?: AppSettings; so
 
 export async function saveSettings(settings: AppSettings) {
   const db = await getDatabase();
-  await db.put("settings", { id: settingsKey, value: settings, updatedAt: Date.now() });
+  const tx = db.transaction("settings", "readwrite");
+  await Promise.all([tx.store.put({ id: settingsKey, value: settings, updatedAt: Date.now() }), tx.done]);
 }
 
 export async function saveSourceBlob(source: SourceImage) {
   const db = await getDatabase();
-  await db.put("sourceBlobs", { id: source.id, blob: source.blob, updatedAt: Date.now() });
+  const tx = db.transaction("sourceBlobs", "readwrite");
+  await Promise.all([tx.store.put({ id: source.id, blob: source.blob, updatedAt: Date.now() }), tx.done]);
 }
 
 export async function saveSourceJson(source: SourceImage) {
@@ -124,7 +126,8 @@ export async function saveSourceJson(source: SourceImage) {
     .catch(() => undefined)
     .then(async () => {
       const db = await getDatabase();
-      await db.put("sourceJson", persistedSource);
+      const tx = db.transaction("sourceJson", "readwrite");
+      await Promise.all([tx.store.put(persistedSource), tx.done]);
     })
     .finally(() => {
       if (sourceJsonSaves.get(source.id) === nextSave) sourceJsonSaves.delete(source.id);
