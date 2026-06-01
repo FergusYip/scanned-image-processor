@@ -504,9 +504,13 @@ export function App() {
       });
       return;
     }
+    if (dragHandle !== undefined) {
+      setPreviewBusy(false);
+      return;
+    }
     let cancelled = false;
     setPreviewBusy(true);
-    const frame = window.requestAnimationFrame(() => {
+    const timer = window.setTimeout(() => {
       renderCropBlobFast(previewSource, previewCrop, 90, 900)
         .then((blob) => {
           if (cancelled) return;
@@ -519,12 +523,13 @@ export function App() {
         .finally(() => {
           if (!cancelled) setPreviewBusy(false);
         });
-    });
+    }, 80);
     return () => {
       cancelled = true;
-      window.cancelAnimationFrame(frame);
+      window.clearTimeout(timer);
     };
   }, [
+    dragHandle,
     previewCrop,
     previewCropPointsKey,
     previewSource,
